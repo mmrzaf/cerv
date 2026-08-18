@@ -1,0 +1,37 @@
+#ifndef CERV_BOUNDS_H
+#define CERV_BOUNDS_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define CERV_REQUEST_BYTES_MAX ((size_t)16384)
+#define CERV_REQUEST_LINE_MAX ((size_t)4096)
+#define CERV_FIELD_LINE_MAX ((size_t)8192)
+#define CERV_FIELD_COUNT_MAX ((size_t)64)
+#define CERV_RESPONSE_BYTES_MAX ((size_t)4096)
+#define CERV_ERROR_BODY_MAX ((size_t)256)
+#define CERV_EPOLL_BATCH_MAX ((size_t)256)
+#define CERV_ACCEPT_QUANTUM ((size_t)64)
+#define CERV_FILE_SEND_QUANTUM ((size_t)(1024 * 1024))
+#define CERV_SOCKET_IO_QUANTUM ((size_t)64)
+#define CERV_KEEPALIVE_REQUESTS_MAX UINT32_C(64)
+#define CERV_LISTEN_BACKLOG ((int)1024)
+#define CERV_WORKERS_MAX ((size_t)1024)
+#define CERV_AFFINITY_CPU_PROBE_MAX ((size_t)1048576)
+#define CERV_DIAG_BYTES_MAX ((size_t)512)
+#define CERV_FD_SAFETY_MARGIN ((size_t)16)
+
+#define CERV_DEFAULT_MAX_CONNECTIONS ((size_t)4096)
+#define CERV_DEFAULT_HEADER_TIMEOUT_MS UINT64_C(5000)
+#define CERV_DEFAULT_WRITE_TIMEOUT_MS UINT64_C(30000)
+#define CERV_DEFAULT_MAX_LIFETIME_MS UINT64_C(300000)
+#define CERV_DEFAULT_SHUTDOWN_TIMEOUT_MS UINT64_C(30000)
+#define CERV_STARTUP_READY_TIMEOUT_MS UINT64_C(10000)
+
+/* The decoded path cannot be longer than the bounded request line. */
+#define CERV_PATH_BYTES_MAX CERV_REQUEST_LINE_MAX
+#define CERV_REPRESENTATION_PATH_BYTES_MAX (CERV_PATH_BYTES_MAX + (size_t)2)
+#define CERV_INDEX_NAME "index.html"
+#define CERV_INDEX_NAME_LEN ((size_t)10)
+
+#endif
