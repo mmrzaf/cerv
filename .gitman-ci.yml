@@ -1,0 +1,94 @@
+image: docker:29-cli
+
+docker: true
+
+env:
+  IMAGE_NAME: cerv
+  DOCKER_BUILDKIT: "1"
+
+  BASE_IMAGE: debian:trixie
+  DEBIAN_MIRROR: http://linux-mirror.liara.ir/repository/debian
+  DEBIAN_SECURITY_MIRROR: http://linux-mirror.liara.ir/repository/debian-security
+
+steps:
+  - name: verify docker access
+    run: |
+      set -eu
+      docker version
+
+  - name: verify local base image
+    run: |
+      set -eu
+      docker image inspect "$BASE_IMAGE" >/dev/null
+
+  - name: resolve image tag
+    run: |
+      set -eu
+
+      RAW_IMAGE_TAG="${GITMAN_TAG:-}"
+
+      if [ -z "$RAW_IMAGE_TAG" ]; then
+        RAW_IMAGE_TAG="$(git describe --tags --exact-match "${GITMAN_COMMIT:-HEAD}" 2>/dev/null || true)"
+      fi
+
+      if [ -z "$RAW_IMAGE_TAG" ]; then
+        echo "Cerv Docker image builds require a git tag; GITMAN_TAG is empty and HEAD is not exactly tagged" >&2
+        exit 1
+      fi
+
+      RAW_VERSION="${RAW_IMAGE_TAG#v}"
+      BASE_VERSION="$(cat VERSION)"
+
+      case "$RAW_VERSION" in
+        "$BASE_VERSION"|"$BASE_VERSION"-*) ;;
+        *)
+          echo "Cerv release tag '$RAW_IMAGE_TAG' does not match VERSION '$BASE_VERSION'" >&2
+          exit 1
+          ;;
+      esac
+
+      IMAGE_TAG="$(printf '%s' "$RAW_VERSION" \
+        | sed 's/[^A-Za-z0-9_.-]/-/g' \
+        | sed 's/^[.-]*//' \
+        | sed 's/[.-]*$//' \
+        | cut -c1-128)"
+
+      if [ -z "$IMAGE_TAG" ]; then
+        echo "Resolved image tag is empty" >&2
+        exit 1
+      fi
+
+      cat > .gitman-image.env <<EOF_TAG
+      REF_KIND=tag
+      RAW_IMAGE_TAG=$RAW_IMAGE_TAG
+      IMAGE_TAG=$IMAGE_TAG
+      IMAGE_REF=$IMAGE_NAME:$IMAGE_TAG
+      EOF_TAG
+
+      cat .gitman-image.env
+
+  - name: build docker image
+    run: |
+      set -eu
+      . ./.gitman-image.env
+
+      docker build \
+        --pull=false \
+        --build-arg BASE_IMAGE="$BASE_IMAGE" \
+        --build-arg DEBIAN_MIRROR="$DEBIAN_MIRROR" \
+        --build-arg DEBIAN_SECURITY_MIRROR="$DEBIAN_SECURITY_MIRROR" \
+        --label "org.opencontainers.image.revision=$GITMAN_COMMIT" \
+        --label "org.opencontainers.image.ref.name=$RAW_IMAGE_TAG" \
+        --label "org.opencontainers.image.version=$IMAGE_TAG" \
+        --tag "$IMAGE_REF" \
+        .
+
+  - name: verify built image
+    run: |
+      set -eu
+      . ./.gitman-image.env
+
+      EXPECTED_VERSION="$(cat VERSION)"
+
+      docker image inspect "$IMAGE_REF" >/dev/null
+      docker run --rm "$IMAGE_REF" --version | grep -qx "cerv $EXPECTED_VERSION"

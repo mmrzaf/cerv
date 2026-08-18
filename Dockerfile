@@ -1,13 +1,28 @@
-# syntax=docker/dockerfile:1.7
-
-# Debian 13.6 slim, pinned to the official multi-architecture image index used
-# for this release. Dependabot owns controlled base-image refreshes.
-FROM debian:trixie-20260713-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS cerv-base
+ARG BASE_IMAGE=debian:trixie
+FROM ${BASE_IMAGE} AS cerv-base
 
 FROM cerv-base AS build
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
-    && rm -rf /var/lib/apt/lists/*
+ARG DEBIAN_MIRROR=http://linux-mirror.liara.ir/repository/debian
+ARG DEBIAN_SECURITY_MIRROR=http://linux-mirror.liara.ir/repository/debian-security
+
+RUN set -eu; \
+    printf '%s\n' \
+      'Types: deb' \
+      "URIs: ${DEBIAN_MIRROR}" \
+      'Suites: trixie trixie-updates' \
+      'Components: main' \
+      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+      '' \
+      'Types: deb' \
+      "URIs: ${DEBIAN_SECURITY_MIRROR}" \
+      'Suites: trixie-security' \
+      'Components: main' \
+      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+      > /etc/apt/sources.list.d/debian.sources; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends build-essential; \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /src
 COPY Makefile VERSION RELEASE_EPOCH ./
 COPY src ./src
@@ -23,11 +38,9 @@ COPY --from=build /out/cerv /usr/local/bin/cerv
 RUN mkdir -p /srv/cerv \
     && chmod 0555 /srv/cerv
 
-# Numeric non-root identity keeps the runtime independent of passwd/group files.
 USER 65532:65532
 WORKDIR /srv/cerv
 
-# These are image defaults, not wrapper-script arguments. Cerv reads them natively.
 ENV CERV_LISTEN=0.0.0.0:8080 \
     CERV_ROOT=/srv/cerv \
     CERV_WORKERS=auto \
