@@ -7,3 +7,7 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 Makefile text eol=lf
+
+# Protocol/fuzzer corpora are byte fixtures; Git must never normalize them.
+test/corpus/** -text !eol
+fuzz/corpus/** -text !eol
