@@ -6,7 +6,20 @@ CLANG=${CLANG:-clang}
 A64_CC=${A64_CC:-aarch64-linux-gnu-gcc}
 
 command -v "$CLANG" >/dev/null 2>&1 || { echo "ERROR: clang is required for AArch64 policy validation" >&2; exit 1; }
-[[ -d /usr/include/aarch64-linux-gnu ]] || { echo "ERROR: AArch64 Linux UAPI headers are required under /usr/include/aarch64-linux-gnu" >&2; exit 1; }
+
+A64_INCLUDE=${A64_INCLUDE:-}
+if [[ -z "$A64_INCLUDE" ]]; then
+    for candidate in /usr/aarch64-linux-gnu/include /usr/include/aarch64-linux-gnu; do
+        if [[ -d "$candidate" ]]; then
+            A64_INCLUDE=$candidate
+            break
+        fi
+    done
+fi
+[[ -n "$A64_INCLUDE" && -d "$A64_INCLUDE" ]] || {
+    echo "ERROR: AArch64 Linux UAPI headers not found; install libc6-dev-arm64-cross or set A64_INCLUDE" >&2
+    exit 1
+}
 RESOURCE=$($CLANG -print-resource-dir)/include
 
 # This is the exact production seccomp translation unit, compiled as AArch64
@@ -14,7 +27,7 @@ RESOURCE=$($CLANG -print-resource-dir)/include
 # BPF structure layout usage, and the architecture-specific syscall vocabulary
 # without substituting host x86 syscall numbers.
 "$CLANG" --target=aarch64-linux-gnu -ffreestanding -nostdinc -I"$ROOT/src" \
-    -isystem "$RESOURCE" -isystem /usr/include/aarch64-linux-gnu -isystem /usr/include \
+    -isystem "$RESOURCE" -isystem "$A64_INCLUDE" -isystem /usr/include \
     -std=c17 -Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion \
     -Wshadow -Wformat=2 -Wundef -Wstrict-prototypes -Wmissing-prototypes \
     -Wcast-qual -Wwrite-strings -Wvla -Wswitch-enum -fno-common \

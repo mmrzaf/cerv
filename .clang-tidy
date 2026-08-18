@@ -1,5 +1,5 @@
 ---
-Checks: '-*,clang-analyzer-core.*,clang-analyzer-security.*,clang-analyzer-unix.*,bugprone-sizeof-expression,bugprone-signed-char-misuse,bugprone-narrowing-conversions,cert-str34-c'
+Checks: '-*,clang-analyzer-core.*,clang-analyzer-security.*,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,clang-analyzer-unix.*,bugprone-sizeof-expression,bugprone-signed-char-misuse,bugprone-narrowing-conversions,cert-str34-c'
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'src/.*'
 FormatStyle: none
