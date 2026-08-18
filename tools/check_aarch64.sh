@@ -45,7 +45,7 @@ if command -v "$A64_CC" >/dev/null 2>&1; then
         -Wsign-conversion -Wshadow -Wformat=2 -Wundef -Wstrict-prototypes \
         -Wmissing-prototypes -Wcast-qual -Wwrite-strings -Wvla -Wswitch-enum -fno-common \
         -O2 -DNDEBUG -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=3 \
-        "${PROD_SRCS[@]}" -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack \
+        "${PROD_SRCS[@]}" -static-pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack \
         -o "$ROOT/build/cross-aarch64/cerv"
     echo "ok: full production tree cross-linked for AArch64"
 else

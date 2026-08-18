@@ -1,6 +1,6 @@
 # Container deployment
 
-Cerv has an official multi-stage `Dockerfile` at the repository root. The runtime image:
+Cerv has an official multi-stage `Dockerfile` at the repository root. Its final stage is `scratch`; the release binary is static PIE, so no distribution userspace or shared libraries are required at runtime. The runtime image:
 
 - runs Cerv directly as PID 1 (no shell entrypoint/wrapper);
 - runs as numeric non-root UID/GID `65532:65532`;

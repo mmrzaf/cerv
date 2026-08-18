@@ -87,7 +87,7 @@ Reasonable profiles include:
 
 ## ASLR/PIE and linker hardening
 
-Official release builds SHOULD use position-independent executable and conventional ELF hardening such as RELRO/NOW and non-executable stack, subject to verification on supported toolchains.
+Official release builds SHOULD use static position-independent executables and conventional ELF hardening such as RELRO/NOW and non-executable stack, subject to verification on supported toolchains. Release verification rejects an ELF interpreter or `DT_NEEDED` shared-library dependency.
 
 These are defense in depth and do not replace C-level correctness.
 

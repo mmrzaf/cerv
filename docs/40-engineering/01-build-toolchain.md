@@ -94,11 +94,13 @@ The baseline release hardening flags, subject to compiler/platform support check
 and linker options such as:
 
 ```text
--pie
+-static-pie
 -Wl,-z,relro
 -Wl,-z,now
 -Wl,-z,noexecstack
 ```
+
+Official release executables SHALL be static PIE: no ELF interpreter and no `DT_NEEDED` shared-library dependencies. This keeps the release binary self-contained and permits the official container runtime stage to use `scratch`.
 
 The project SHALL verify resulting ELF properties rather than assume flags were honored.
 

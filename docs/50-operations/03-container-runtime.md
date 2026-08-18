@@ -9,6 +9,8 @@
 The repository-root `Dockerfile` is the canonical Cerv runtime image definition. It SHALL:
 
 - use a multi-stage build so compiler/tooling is absent from the runtime stage;
+- produce a static-PIE release executable with no runtime shared-library dependency;
+- use `scratch` for the final runtime stage;
 - run the hardened release executable directly as PID 1 with exec-form `ENTRYPOINT`;
 - run as a numeric non-root identity;
 - expose port 8080 and default `CERV_LISTEN=0.0.0.0:8080`;
@@ -16,7 +18,7 @@ The repository-root `Dockerfile` is the canonical Cerv runtime image definition.
 - declare `SIGTERM` as the container stop signal;
 - contain no shell entrypoint that rewrites environment variables into CLI arguments.
 
-The Dockerfile pins its Debian 13.6 slim base to an immutable multi-architecture image index. Base-image refreshes are explicit dependency updates so a release review can see exactly when the runtime foundation changes.
+Debian is a build-stage dependency only. The final runtime image is `scratch`, so no distribution userspace, shell, package manager, dynamic loader, or shared libraries are carried into production. The build stage remains configurable through `BASE_IMAGE` and the repository CI verifies that its approved base image is already present on the runner before an offline build.
 
 ## Runtime isolation
 

@@ -126,7 +126,7 @@ docker run --rm \
   cerv:1.0.0
 ```
 
-The image runs as non-root UID/GID `65532:65532`, starts Cerv directly as PID 1, and defaults to environment-only configuration (`0.0.0.0:8080`, `/srv/cerv`, auto workers, FD-aware auto connection sizing). See `deploy/container/` for Compose and SPA multi-stage examples.
+The runtime stage is `scratch`: it contains only the statically linked Cerv executable plus image metadata, runs as non-root UID/GID `65532:65532`, starts Cerv directly as PID 1, and defaults to environment-only configuration (`0.0.0.0:8080`, `/srv/cerv`, auto workers, FD-aware auto connection sizing). See `deploy/container/` for Compose and SPA multi-stage examples.
 
 ## Verification
 
@@ -145,7 +145,7 @@ make syscall-audit        # measured post-seccomp syscall vocabulary
 make cross-aarch64        # AArch64 seccomp/UAPI plus full cross-link when toolchain exists
 make bounds-report        # concrete per-slot memory/FD derivation
 make reproducible         # two controlled clean builds must be byte-identical
-make hardening-check      # PIE + RELRO/NOW + non-executable stack
+make hardening-check      # static PIE + RELRO/NOW + non-executable stack
 make container-check      # Docker/Podman image + SPA/runtime smoke test
 make verification-check   # complete locally executable verification pipeline
 make release-check        # verification plus container smoke check

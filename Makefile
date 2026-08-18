@@ -19,7 +19,7 @@ DEBUGFLAGS := -O0 -g3
 SANFLAGS := -O1 -g3 -fno-omit-frame-pointer -fsanitize=address,undefined -DCERV_INSTRUMENTED_BUILD=1
 COVERAGEFLAGS := -O0 -g3 -fprofile-instr-generate -fcoverage-mapping -DCERV_INSTRUMENTED_BUILD=1
 RELEASE_CFLAGS := -O2 -g1 -DNDEBUG -fPIE -fstack-protector-strong -fstack-clash-protection -D_FORTIFY_SOURCE=3 -ffile-prefix-map=$(CURDIR)=. -fdebug-prefix-map=$(CURDIR)=.
-RELEASE_LDFLAGS := -pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
+RELEASE_LDFLAGS := -static-pie -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack
 FUZZFLAGS := -O1 -g3 -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined
 FUZZ_CORE_FLAGS := -O1 -g3 -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,address,undefined
 FUZZ_RUNS ?= 5000
