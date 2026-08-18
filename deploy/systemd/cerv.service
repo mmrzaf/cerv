@@ -1,0 +1,27 @@
+[Unit]
+Description=Cerv bounded static file server
+After=network.target
+
+[Service]
+Type=simple
+User=cerv
+Group=cerv
+Environment=CERV_LISTEN=127.0.0.1:8080
+Environment=CERV_ROOT=/srv/cerv
+Environment=CERV_WORKERS=auto
+Environment=CERV_MAX_CONNECTIONS=auto
+ExecStart=/usr/local/bin/cerv
+Restart=on-failure
+RestartSec=1s
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+LimitNOFILE=100000
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/srv/cerv
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
