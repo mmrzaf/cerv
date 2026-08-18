@@ -1,0 +1,27 @@
+services:
+  cerv:
+    build:
+      context: ../..
+    ports:
+      - "8080:8080"
+    environment:
+      CERV_ROOT: /srv/cerv
+      CERV_LISTEN: 0.0.0.0:8080
+      CERV_WORKERS: auto
+      CERV_MAX_CONNECTIONS: auto
+      # Uncomment for client-side SPA routing:
+      # CERV_SPA_FALLBACK: /index.html
+    volumes:
+      - ./site:/srv/cerv:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    stop_grace_period: 35s
