@@ -1,0 +1,3 @@
+GET http://target.example/a HTTP/1.1
+Host: [:::]
+
