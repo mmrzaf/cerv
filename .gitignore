@@ -1,0 +1,9 @@
+/build/
+/dist/
+**/__pycache__/
+*.py[cod]
+*.profraw
+*.profdata
+core
+core.*
+.DS_Store
