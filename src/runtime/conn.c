@@ -443,7 +443,7 @@ enum cerv_conn_result cerv_conn_on_writable(struct cerv_conn *conn, struct cerv_
                 return cerv_conn_finish_response(conn, now, header_timeout);
             }
             if (file_budget == 0U) return CERV_CONN_KEEP;
-            return CERV_CONN_KEEP;
+            continue;
         }
         if (conn->state == CERV_CONN_SEND_FALLBACK) {
             result = cerv_conn_send_fallback(conn, now, write_timeout, &operations, &file_budget);
