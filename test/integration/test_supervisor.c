@@ -236,6 +236,29 @@ static size_t socket_fd_count(pid_t pid)
     return count;
 }
 
+/*
+ * Sockets a worker holds before any test client connects: the shared listener plus whatever the harness leaked
+ * into its descendants. Sampled until two consecutive reads agree so a connection still closing after the
+ * readiness probe cannot skew the baseline.
+ */
+static bool stable_socket_baseline(const pid_t pids[], size_t count, size_t baseline[])
+{
+    size_t previous[CERV_WORKERS_MAX] = {0};
+    unsigned attempt;
+    size_t i;
+    for (attempt = 0U; attempt < 100U; ++attempt) {
+        bool stable = attempt != 0U;
+        for (i = 0U; i < count; ++i) {
+            baseline[i] = socket_fd_count(pids[i]);
+            if (baseline[i] != previous[i]) stable = false;
+            previous[i] = baseline[i];
+        }
+        if (stable) return true;
+        sleep_ms(10U);
+    }
+    return false;
+}
+
 static bool wait_master(pid_t pid, unsigned timeout_ms, int *status)
 {
     unsigned elapsed = 0U;
@@ -370,6 +393,7 @@ static void test_multiworker_saturation(const char *root)
     uint16_t port = choose_port();
     pid_t master;
     pid_t workers[4] = {0};
+    size_t baseline[4] = {0};
     int clients[8];
     size_t i;
     bool filled = false;
@@ -379,6 +403,7 @@ static void test_multiworker_saturation(const char *root)
     master = spawn_supervisor(&config);
     CHECK(master > (pid_t)0 && wait_children(master, 4U, workers) && wait_ready(port));
     if (master <= (pid_t)0) return;
+    CHECK(stable_socket_baseline(workers, 4U, baseline));
     for (i = 0U; i < 8U; ++i) {
         clients[i] = connect_client(port);
         CHECK(clients[i] >= 0);
@@ -390,7 +415,7 @@ static void test_multiworker_saturation(const char *root)
         size_t used_workers = 0U;
         for (w = 0U; w < 4U; ++w) {
             size_t sockets = socket_fd_count(workers[w]);
-            size_t clients_here = sockets > 0U ? sockets - 1U : 0U;
+            size_t clients_here = sockets > baseline[w] ? sockets - baseline[w] : 0U;
             active += clients_here;
             if (clients_here != 0U) ++used_workers;
         }
