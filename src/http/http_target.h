@@ -33,6 +33,7 @@ struct cerv_http_target {
 struct cerv_path {
     unsigned char bytes[CERV_PATH_BYTES_MAX];
     size_t len;
+    bool directory_index; /* the request named a directory, so CERV_INDEX_NAME was appended */
 };
 
 enum cerv_target_result cerv_http_target_parse(struct cerv_span raw, struct cerv_http_target *out);

@@ -59,6 +59,13 @@ Tests SHALL cover:
 /non-ASCII-percent-encoded-bytes
 /#fragment-like-text
 /?query
+/.env
+/%2eenv
+/.git/HEAD
+/a/.hidden/b
+/.well-known/security.txt
+/.well-known/.secret
+/a/.well-known/x
 ```
 
 For every accepted path, test that the filesystem path remains beneath root under concurrent rename/link activity to the extent the chosen kernel semantics allow.
@@ -74,6 +81,8 @@ Integration tests SHALL construct roots containing:
 - FIFO;
 - Unix socket;
 - directory where file expected;
+- dotfiles and dot-directories (`.env`, `.git/HEAD`, a dot-segment below `.well-known`) that exist on disk, asserting a plain 404 and no disclosure, alongside a public `.well-known/` file;
+- missing assets (`/app.js`) under an SPA fallback, asserting 404 rather than the fallback document;
 - hard link fixture;
 - permission-denied file/directory;
 - mountpoint fixture when CI allows;

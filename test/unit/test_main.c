@@ -1,6 +1,7 @@
 #include "base/bounds.h"
 #include "base/buffer.h"
 #include "base/checked.h"
+#include "base/path.h"
 #include "http/http_date.h"
 #include "http/http_fields.h"
 #include "http/http_range.h"
@@ -309,6 +310,70 @@ static void test_targets(void)
     CHECK(cerv_http_target_parse(span("ftp://example.com/a"), &t) == CERV_TARGET_BAD_REQUEST);
 }
 
+static bool hidden(const char *path)
+{
+    return cerv_path_is_hidden((const unsigned char *)path, strlen(path));
+}
+
+static bool last_dot(const char *path)
+{
+    return cerv_path_last_segment_has_dot((const unsigned char *)path, strlen(path));
+}
+
+static void test_path_policy(void)
+{
+    struct cerv_http_target t;
+    struct cerv_path p;
+
+    /* Dotfiles and dot-directories are hidden at any depth; only a leading .well-known is public. */
+    CHECK(hidden(".env"));
+    CHECK(hidden(".git/HEAD"));
+    CHECK(hidden("a/.git/config"));
+    CHECK(hidden("a/b/.htpasswd"));
+    CHECK(hidden("..env"));
+    CHECK(hidden(".well-known2/x"));
+    CHECK(hidden(".Well-Known/x"));
+    CHECK(hidden("a/.well-known/x"));
+    CHECK(hidden(".well-known/.secret"));
+    CHECK(hidden(".well-known/a/.secret"));
+    CHECK(hidden("x/.well-known"));
+    CHECK(!hidden(".well-known/security.txt"));
+    CHECK(!hidden(".well-known/acme-challenge/token"));
+    CHECK(!hidden(".well-known"));
+    CHECK(!hidden("index.html"));
+    CHECK(!hidden("a/b.c/d"));
+    CHECK(!hidden("a./b"));
+    CHECK(!hidden("a/b."));
+    CHECK(!hidden("caf\xC3\xA9/x"));
+    CHECK(hidden("caf\xC3\xA9/.x"));
+    CHECK(!hidden(""));
+    CHECK(!cerv_path_is_hidden(NULL, 0U));
+
+    CHECK(last_dot("app.js"));
+    CHECK(last_dot("a/b/app.min.js"));
+    CHECK(last_dot("a.b/c.d"));
+    CHECK(last_dot(".env"));
+    CHECK(!last_dot("dashboard"));
+    CHECK(!last_dot("a.b/dashboard"));
+    CHECK(!last_dot("users/42"));
+    CHECK(!last_dot(""));
+    CHECK(!cerv_path_last_segment_has_dot(NULL, 0U));
+
+    /* The decoder records whether the index name was synthesized for a directory request. */
+    CHECK(cerv_http_target_parse(span("/"), &t) == CERV_TARGET_OK && cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK && p.directory_index);
+    CHECK(cerv_http_target_parse(span("/a/"), &t) == CERV_TARGET_OK && cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK && p.directory_index);
+    CHECK(cerv_http_target_parse(span("/a"), &t) == CERV_TARGET_OK && cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK && !p.directory_index);
+    CHECK(cerv_http_target_parse(span("/a/index.html"), &t) == CERV_TARGET_OK && cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK && !p.directory_index);
+
+    /* Percent-encoded leading dots are decoded before the policy runs. */
+    CHECK(cerv_http_target_parse(span("/%2eenv"), &t) == CERV_TARGET_OK && cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK &&
+          cerv_path_is_hidden(p.bytes, p.len));
+    CHECK(cerv_http_target_parse(span("/a/%2Egit/config"), &t) == CERV_TARGET_OK && cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK &&
+          cerv_path_is_hidden(p.bytes, p.len));
+    CHECK(cerv_http_target_parse(span("/.well-known/security.txt"), &t) == CERV_TARGET_OK &&
+          cerv_http_target_decode_path(&t, &p) == CERV_TARGET_OK && !cerv_path_is_hidden(p.bytes, p.len));
+}
+
 static void test_dates(void)
 {
     struct cerv_http_date d;
@@ -585,6 +650,7 @@ int main(void)
     test_fields();
     test_parser_domain_bounds();
     test_targets();
+    test_path_policy();
     test_dates();
     test_ranges();
     test_requests_basic();

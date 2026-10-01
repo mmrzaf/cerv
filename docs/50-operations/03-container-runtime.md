@@ -52,7 +52,7 @@ ENV CERV_SPA_FALLBACK=/index.html
 
 The resulting image contains the built static application and Cerv, not Node/npm/build dependencies.
 
-SPA fallback is opt-in because a generic static origin should return real 404s. When enabled, only representation-level 404s are retried against the configured fallback file.
+SPA fallback is opt-in because a generic static origin should return real 404s. When enabled, only representation-level 404s for extensionless client-side routes are retried against the configured fallback file; a missing `/app.js` is still a `404`.
 
 ## Package mirrors
 

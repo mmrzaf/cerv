@@ -21,7 +21,7 @@ Cerv SHALL assume an unauthenticated remote peer can:
 - probe path traversal, percent encoding, slash ambiguity, backslash handling, symlink behavior, and race windows;
 - attempt to create CPU unfairness or FD pressure through legal requests.
 
-Cerv SHALL also assume that deployment mistakes are possible: writable document roots, unexpected symlinks, weak file permissions, constrained `RLIMIT_NOFILE`, slow log sinks, stale clocks, and incompatible reverse-proxy normalization.
+Cerv SHALL also assume that deployment mistakes are possible: writable document roots, unexpected symlinks, secrets or version-control metadata copied into the root, weak file permissions, constrained `RLIMIT_NOFILE`, slow log sinks, stale clocks, and incompatible reverse-proxy normalization.
 
 ## Out-of-scope adversaries
 

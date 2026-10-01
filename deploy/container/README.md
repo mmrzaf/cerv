@@ -47,7 +47,7 @@ COPY --from=build /app/dist/ /srv/cerv/
 ENV CERV_SPA_FALLBACK=/index.html
 ```
 
-`CERV_SPA_FALLBACK` retries the configured root-relative file only after a genuine representation 404. It does not replace 400/403/406/500-class outcomes, so filesystem/security/negotiation failures are not disguised as the SPA shell.
+`CERV_SPA_FALLBACK` retries the configured root-relative file only after a genuine representation 404 for an extensionless client-side route (a missing `/app.js` stays a real 404). It does not replace 400/403/406/500-class outcomes, so filesystem/security/negotiation failures are not disguised as the SPA shell.
 
 Do **not** set `CERV_IMMUTABLE=1` merely because the application is an SPA. That switch applies the immutable cache policy to the complete served tree, including `index.html`. Use it only when the complete deployment tree is genuinely immutable under your cache/release model.
 

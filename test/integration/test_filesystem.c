@@ -564,6 +564,67 @@ static void test_etag_wire_format(const char *root_dir)
     cerv_fs_root_close(&root);
 }
 
+static bool make_dir(const char *root_dir, const char *relative)
+{
+    char path[1024];
+    return path_join(path, sizeof(path), root_dir, relative) && mkdir(path, 0755) == 0;
+}
+
+static bool make_file(const char *root_dir, const char *relative, const char *bytes)
+{
+    char path[1024];
+    return path_join(path, sizeof(path), root_dir, relative) && write_bytes(path, bytes);
+}
+
+static enum cerv_representation_result select_plain(const struct cerv_fs_root *root, const char *logical)
+{
+    struct cerv_path path = logical_path(logical);
+    struct cerv_accept_encoding ae = accept_encoding(NULL);
+    struct cerv_representation rep;
+    enum cerv_representation_result result = cerv_representation_select(root, &path, &ae, &rep);
+    if (result == CERV_REPRESENTATION_OK) cerv_representation_close(&rep);
+    else CHECK(rep.file.fd == -1);
+    return result;
+}
+
+static void test_hidden_paths(const char *root_dir)
+{
+    struct cerv_fs_root root = {.fd = -1};
+    CHECK(cerv_fs_root_open(root_dir, &root) == CERV_FS_ROOT_OK);
+    CHECK(make_dir(root_dir, "hide"));
+    CHECK(make_dir(root_dir, "hide/.git"));
+    CHECK(make_dir(root_dir, "hide/.well-known"));
+    CHECK(make_dir(root_dir, ".well-known"));
+    CHECK(make_dir(root_dir, ".well-known/acme-challenge"));
+    CHECK(make_file(root_dir, ".env", "SECRET=1\n"));
+    CHECK(make_file(root_dir, ".env.gz", "GZ"));
+    CHECK(make_file(root_dir, "hide/.git/HEAD", "ref: refs/heads/main\n"));
+    CHECK(make_file(root_dir, "hide/.well-known/x", "nested well-known is not public\n"));
+    CHECK(make_file(root_dir, "hide/visible.txt", "ok\n"));
+    CHECK(make_file(root_dir, ".well-known/security.txt", "Contact: mailto:security@example.com\n"));
+    CHECK(make_file(root_dir, ".well-known/.secret", "no\n"));
+    CHECK(make_file(root_dir, ".well-known/acme-challenge/token", "tok\n"));
+
+    /* Existing dotfiles are indistinguishable from absent files. */
+    CHECK(select_plain(&root, ".env") == CERV_REPRESENTATION_NOT_FOUND);
+    CHECK(select_plain(&root, "hide/.git/HEAD") == CERV_REPRESENTATION_NOT_FOUND);
+    CHECK(select_plain(&root, "hide/.well-known/x") == CERV_REPRESENTATION_NOT_FOUND);
+    CHECK(select_plain(&root, ".well-known/.secret") == CERV_REPRESENTATION_NOT_FOUND);
+    CHECK(select_plain(&root, ".absent") == CERV_REPRESENTATION_NOT_FOUND);
+    {
+        struct cerv_path path = logical_path(".env");
+        struct cerv_accept_encoding ae = accept_encoding("gzip, br, identity");
+        struct cerv_representation rep;
+        CHECK(cerv_representation_select(&root, &path, &ae, &rep) == CERV_REPRESENTATION_NOT_FOUND);
+    }
+
+    /* Only the leading .well-known namespace is public. */
+    CHECK(select_plain(&root, ".well-known/security.txt") == CERV_REPRESENTATION_OK);
+    CHECK(select_plain(&root, ".well-known/acme-challenge/token") == CERV_REPRESENTATION_OK);
+    CHECK(select_plain(&root, "hide/visible.txt") == CERV_REPRESENTATION_OK);
+    cerv_fs_root_close(&root);
+}
+
 static void test_linux_mount_and_magic_link_policy(void)
 {
     struct cerv_fs_root root = {.fd = -1};
@@ -879,6 +940,7 @@ int main(void)
     if (root_dir != NULL && outside_dir != NULL) {
         test_fs_and_representation(root_dir, outside_dir);
         test_etag_wire_format(root_dir);
+        test_hidden_paths(root_dir);
         test_request_to_response_pipeline(root_dir);
     }
     test_linux_mount_and_magic_link_policy();

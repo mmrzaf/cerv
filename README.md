@@ -19,6 +19,7 @@ Current product version: **1.0.0**.
 - Native environment-variable configuration with command-line override semantics.
 - FD-aware automatic connection sizing.
 - Optional `--spa-fallback` / `CERV_SPA_FALLBACK` for client-side-routed static applications.
+- Dotfiles and dot-directories (`.env`, `.git/`, ...) are never served; only `.well-known/` is public.
 - No request-time Cerv allocation, no user-space request queue, and no synchronous core access log.
 
 TLS, HTTP/2/3, dynamic compression, authentication, directory listing, general application routing, and access logging are intentionally outside the core; put those at the edge.
@@ -108,7 +109,7 @@ CERV_SPA_FALLBACK=/index.html \
 ./build/release/cerv
 ```
 
-Only genuine file-not-found outcomes fall back to the configured file. Permission, negotiation, malformed-request, and operational failures preserve their real status.
+Only genuine file-not-found outcomes for extensionless client-side routes fall back to the configured file; a missing `/app.js` is still a `404`. Permission, negotiation, malformed-request, and operational failures preserve their real status.
 
 ## Docker
 

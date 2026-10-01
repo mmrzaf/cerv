@@ -22,11 +22,11 @@ def low_nofile() -> None:
     resource.setrlimit(resource.RLIMIT_NOFILE, (1024, 1024))
 
 
-def request(port: int) -> bytes:
+def request(port: int, target: str = "/client/deep/route") -> bytes:
     with socket.create_connection(("127.0.0.1", port), timeout=0.5) as sock:
         sock.sendall(
-            b"GET /client/deep/route HTTP/1.1\r\n"
-            b"Host: env-test\r\n"
+            f"GET {target} HTTP/1.1\r\n".encode("ascii")
+            + b"Host: env-test\r\n"
             b"Connection: close\r\n\r\n"
         )
         data = bytearray()
@@ -43,6 +43,9 @@ def main() -> int:
     cerv = os.path.abspath(sys.argv[1])
     with tempfile.TemporaryDirectory(prefix="cerv-env-test-") as root:
         Path(root, "index.html").write_text("<!doctype html><title>env spa</title>\n", encoding="utf-8")
+        Path(root, ".env").write_text("SECRET=1\n", encoding="utf-8")
+        Path(root, ".well-known").mkdir()
+        Path(root, ".well-known", "security.txt").write_text("Contact: mailto:security@example.com\n", encoding="utf-8")
         port = free_port()
         env = os.environ.copy()
         env.update(
@@ -73,6 +76,17 @@ def main() -> int:
                     time.sleep(0.02)
             if b"HTTP/1.1 200 OK\r\n" not in response or b"env spa" not in response:
                 raise AssertionError("env-only SPA request did not succeed")
+            # Policy through the real sandboxed executable: assets 404, dotfiles hidden, .well-known public.
+            missing_asset = request(port, "/assets/missing.js")
+            if b"HTTP/1.1 404 Not Found\r\n" not in missing_asset or b"env spa" in missing_asset:
+                raise AssertionError("a missing asset must be a real 404, not the SPA shell")
+            for target in ("/.env", "/%2eenv", "/.well-known/.secret"):
+                hidden = request(port, target)
+                if b"HTTP/1.1 404 Not Found\r\n" not in hidden or b"SECRET" in hidden:
+                    raise AssertionError(f"hidden path {target} was not a plain 404: {hidden!r}")
+            public = request(port, "/.well-known/security.txt")
+            if b"HTTP/1.1 200 OK\r\n" not in public or b"Contact:" not in public:
+                raise AssertionError("/.well-known/ must stay public")
             proc.terminate()
             if proc.wait(timeout=5) != 0:
                 raise AssertionError("env-only Cerv did not shut down cleanly")
@@ -102,7 +116,7 @@ def main() -> int:
             raise AssertionError(f"explicit impossible connection cap returned {failed.returncode}")
         if "required_worker_fds=8208" not in failed.stderr or "nofile_soft=1024" not in failed.stderr:
             raise AssertionError(f"resource diagnostic missing FD math: {failed.stderr!r}")
-    print("env runtime integration: auto capacity + SPA + strict numeric cap passed")
+    print("env runtime integration: auto capacity + SPA + dotfile policy + strict numeric cap passed")
     return 0
 
 

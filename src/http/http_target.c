@@ -307,6 +307,7 @@ enum cerv_target_result cerv_http_target_decode_path(const struct cerv_http_targ
         if (need_sep != 0U) out->bytes[out_pos++] = (unsigned char)'/';
         memcpy(out->bytes + out_pos, CERV_INDEX_NAME, CERV_INDEX_NAME_LEN);
         out_pos += CERV_INDEX_NAME_LEN;
+        out->directory_index = true;
     }
     out->bytes[out_pos] = 0U;
     out->len = out_pos;

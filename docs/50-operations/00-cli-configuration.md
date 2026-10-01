@@ -125,9 +125,9 @@ This is intentionally startup adaptation, not runtime growth.
 
 ## SPA fallback
 
-`--spa-fallback PATH` / `CERV_SPA_FALLBACK=PATH` enables one bounded static fallback for client-side routed applications. PATH is a root-relative file path; an optional leading `/` is ignored for filesystem resolution. Empty segments, `.`/`..`, backslash, query/fragment syntax, control bytes, and trailing-directory syntax are rejected.
+`--spa-fallback PATH` / `CERV_SPA_FALLBACK=PATH` enables one bounded static fallback for client-side routed applications. PATH is a root-relative file path; an optional leading `/` is ignored for filesystem resolution. Empty segments, `.`/`..`, backslash, query/fragment syntax, control bytes, trailing-directory syntax, and hidden (dot-prefixed) segments are rejected.
 
-Fallback occurs only when the originally requested representation resolves to `CERV_REPRESENTATION_NOT_FOUND`. It does **not** replace forbidden, not-acceptable, FD-exhaustion, I/O, malformed-request, or unsupported-confinement outcomes.
+Fallback occurs only when the originally requested representation resolves to `CERV_REPRESENTATION_NOT_FOUND` **and** the request names a client-side route, meaning its final path segment has no `.` or it ends in `/`. Requests for missing files with an extension, such as `/app.js` or `/logo.png`, remain `404`. It does **not** replace forbidden, not-acceptable, FD-exhaustion, I/O, malformed-request, or unsupported-confinement outcomes.
 
 The fallback is selected through the ordinary representation negotiator, so precompressed `.br`/`.gz` sidecars, validators, ranges, MIME type, HEAD semantics, and cache policy all apply to the fallback file exactly as they do to an ordinary request.
 

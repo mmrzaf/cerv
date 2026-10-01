@@ -1,4 +1,5 @@
 #include "base/bounds.h"
+#include "base/path.h"
 #include "http/http_target.h"
 #include "fuzz_support.h"
 
@@ -28,6 +29,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
                 cerv_fuzz_require(path.bytes[path.len] == 0U);
                 cerv_fuzz_require(memchr(path.bytes, 0, path.len) == NULL);
                 if (path.len != 0U) cerv_fuzz_require(path.bytes[0] != (unsigned char)'/');
+                if (path.directory_index) {
+                    cerv_fuzz_require(path.len >= CERV_INDEX_NAME_LEN);
+                    cerv_fuzz_require(memcmp(path.bytes + path.len - CERV_INDEX_NAME_LEN, CERV_INDEX_NAME, CERV_INDEX_NAME_LEN) == 0);
+                }
+                /* The policy predicates are total over every decodable path. */
+                (void)cerv_path_is_hidden(path.bytes, path.len);
+                (void)cerv_path_last_segment_has_dot(path.bytes, path.len);
             }
         }
     }

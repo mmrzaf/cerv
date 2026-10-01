@@ -1,6 +1,7 @@
 #include "serve/representation.h"
 
 #include "base/buffer.h"
+#include "base/path.h"
 #include "serve/media_type.h"
 
 #include <stdint.h>
@@ -155,6 +156,8 @@ enum cerv_representation_result cerv_representation_select(const struct cerv_fs_
         return CERV_REPRESENTATION_IO;
     }
     *out = (struct cerv_representation){.file = {.fd = -1}};
+    /* Dotfiles and dot-directories never exist as far as clients can tell; no filesystem probe is made. */
+    if (cerv_path_is_hidden(logical_path->bytes, logical_path->len)) return CERV_REPRESENTATION_NOT_FOUND;
     candidates[0] = (struct cerv_candidate){CERV_ENCODING_BR, cerv_accept_encoding_quality(accept_encoding, "br"), 3U, false};
     candidates[1] = (struct cerv_candidate){CERV_ENCODING_GZIP, cerv_accept_encoding_quality(accept_encoding, "gzip"), 2U, false};
     candidates[2] = (struct cerv_candidate){CERV_ENCODING_IDENTITY, cerv_accept_encoding_quality(accept_encoding, "identity"), 1U, false};

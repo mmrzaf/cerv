@@ -122,20 +122,23 @@ A request to `/foo` SHALL NOT automatically redirect to `/foo/` in the baseline.
 
 Cerv MAY be configured with one fixed root-relative SPA fallback path using `--spa-fallback PATH` or `CERV_SPA_FALLBACK`. The default is disabled.
 
-The fallback is applied **only after the normal requested logical path produces `CERV_REPRESENTATION_NOT_FOUND`**. Cerv then performs ordinary representation selection for the configured fallback path. This means the fallback's own MIME type, precompressed sidecars, validators, ranges, HEAD behavior, and cache policy are used normally.
+The fallback is applied **only after the normal requested logical path produces `CERV_REPRESENTATION_NOT_FOUND`**, and **only for requests that name a client-side route**: a path whose final segment contains no `.`, or a directory-shaped path ending in `/`. A request whose final segment has a file extension (`/app.js`, `/assets/logo.png`, `/favicon.ico`) is a request for an asset, and an asset that does not exist is a real `404`; answering it with the HTML shell would hide deployment mistakes and give scripts and images the wrong media type. Cerv then performs ordinary representation selection for the configured fallback path. This means the fallback's own MIME type, precompressed sidecars, validators, ranges, HEAD behavior, and cache policy are used normally.
 
 The fallback SHALL NOT replace malformed-request/path failures, forbidden filesystem results, representation negotiation failure (406), descriptor/resource exhaustion, or internal I/O errors. It is therefore a static-origin 404 fallback, not an application router or generic error-page mechanism.
 
-The configured fallback path is parsed at startup as a bounded logical path. A leading `/` is accepted for operator convenience and stripped; empty segments, `.`/`..`, backslashes, query/fragment markers, control bytes, and a trailing slash are rejected. An empty `CERV_SPA_FALLBACK` disables the feature.
+The configured fallback path is parsed at startup as a bounded logical path. A leading `/` is accepted for operator convenience and stripped; empty segments, `.`/`..`, backslashes, query/fragment markers, control bytes, a trailing slash, and hidden (dot-prefixed) segments are rejected. An empty `CERV_SPA_FALLBACK` disables the feature.
 
 ## Dotfiles
 
-Cerv SHALL NOT maintain a generic “dotfile denylist.”
+Cerv never serves dotfiles. After percent-decoding, a request path is **hidden** when any of its `/`-separated segments begins with `.`; the single exception is a leading `.well-known` segment, the public namespace reserved by RFC 8615. A hidden path is answered exactly like an absent file (`404`), with no filesystem probe, so a client cannot tell whether `.env` or `.git/HEAD` exists.
 
-Reasons:
+Details:
 
-- `.well-known` is a legitimate web namespace;
-- security-sensitive files should not be deployed inside the document root;
-- filename heuristics are an unreliable substitute for root-content discipline.
+- the check runs on the decoded path, so `/%2eenv` and `/.env` are equivalent;
+- `.well-known/...` is public, but a dot-prefixed segment *inside* it (`.well-known/.secret`) and a `.well-known` segment that is not first (`app/.well-known/x`) are hidden;
+- the comparison is exact and case-sensitive, so `.Well-Known` and `.well-known2` are hidden;
+- a dot in the middle or at the end of a segment (`a./b`, `file.`) does not hide it;
+- precompressed sidecars are looked up from the already-checked logical path and cannot reveal a hidden file;
+- hidden paths do not trigger the SPA fallback for asset-shaped requests, and a hidden fallback path is rejected at startup.
 
-The root is an explicit trust boundary: **everything reachable as an allowed regular file is considered intended to be serveable** unless a later explicit policy says otherwise.
+This is a fixed policy, not a configurable denylist: version-control metadata, editor backups, credentials, and environment files are the most common way for a deployment mistake to become a disclosure, and no legitimate static site needs to publish them. Security-sensitive files should still not be deployed inside the document root at all; this rule is a safety net, not a substitute for root-content discipline.

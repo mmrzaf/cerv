@@ -24,6 +24,13 @@ Unless a function-specific row says otherwise:
 | `cerv_span_equal_ascii_ci` | valid span; non-NULL NUL-terminated internal ASCII literal | ASCII-only case-insensitive equality; no locale dependency | span length + internal literal length |
 | `cerv_span_trim_ows` | valid span | borrowed subspan with leading/trailing SP/HTAB removed; NULL/zero remains NULL/zero | input length |
 
+## `base/path.h`
+
+| Function | Accepted input | Result / preserved invariant | Bound |
+| --- | --- | --- | --- |
+| `cerv_path_is_hidden` | NULL or a decoded relative path of any length | true iff some `/`-separated segment begins with `.` other than an exact, case-sensitive leading `.well-known`; NULL and empty are not hidden | O(length), no allocation |
+| `cerv_path_last_segment_has_dot` | NULL or a decoded relative path | true iff the final `/`-separated segment contains `.`; used to tell asset requests from client-side routes | O(length), no allocation |
+
 ## `base/checked.h`
 
 | Function | Accepted input | Result / preserved invariant | Bound |
@@ -158,7 +165,7 @@ Normalized metadata fields (`size`, mtime seconds and nanoseconds) are captured 
 
 | Function | Accepted input | Result / preserved invariant | Ownership / bound |
 | --- | --- | --- | --- |
-| `cerv_representation_select` | live root, valid decoded logical path, initialized Accept-Encoding state, non-NULL output | considers identity/`.gz`/`.br`; honors qvalues before deterministic `br > gzip > identity` tie-break; optional sidecar absence/policy/permission/nonregular failures can fall through to another acceptable representation; operational failures propagate; unsupported confinement remains an internal class that response planning treats as fail-stop; if existing forms are all explicitly unacceptable returns 406 class | fixed three candidates; on OK output owns one FD; on failure owns none |
+| `cerv_representation_select` | live root, valid decoded logical path, initialized Accept-Encoding state, non-NULL output | hidden (dot-prefixed) paths return NOT_FOUND without touching the filesystem; otherwise considers identity/`.gz`/`.br`; honors qvalues before deterministic `br > gzip > identity` tie-break; optional sidecar absence/policy/permission/nonregular failures can fall through to another acceptable representation; operational failures propagate; unsupported confinement remains an internal class that response planning treats as fail-stop; if existing forms are all explicitly unacceptable returns 406 class | fixed three candidates; on OK output owns one FD; on failure owns none |
 | `cerv_representation_close` | NULL or initialized representation | closes any still-owned representation FD | consumes owned FD if present |
 | `cerv_representation_take_fd` | initialized representation | returns current FD and stores `-1`; NULL returns `-1` | transfers ownership to caller exactly once |
 | `cerv_representation_etag` | NULL or initialized representation | borrowed view of the bounded generated ETag; NULL yields empty span | O(1), no ownership transfer |
@@ -223,7 +230,7 @@ The connection layer owns one accepted client socket and, after successful respo
 | `cerv_conn_cleanup` | NULL or any initialized slot | closes owned socket/file FDs and resets runtime state while preserving index/generation/free-link identity | bounded; consumes owned FDs |
 | `cerv_conn_next_deadline` | active connection, output | returns min of lifetime and state-relevant header/write deadline | O(1) |
 | `cerv_conn_should_close_response` | request close flag, resource success class, completed-request count | pure bounded persistence decision; close for explicit close/error/final allowed request | O(1) |
-| `cerv_conn_on_readable` | RECV_HEADERS connection, borrowed live root, optional borrowed SPA fallback path, nonzero write timeout | performs at most `CERV_SOCKET_IO_QUANTUM` recv attempts into fixed request storage; incrementally recognizes CRLFCRLF; composes parser→path→representation→response; on representation `NOT_FOUND` only, may retry the configured fallback path; returns KEEP/CLOSE/FATAL | no allocation; header deadline is never reset by bytes received; fallback never masks non-404 classes |
+| `cerv_conn_on_readable` | RECV_HEADERS connection, borrowed live root, optional borrowed SPA fallback path, nonzero write timeout | performs at most `CERV_SOCKET_IO_QUANTUM` recv attempts into fixed request storage; incrementally recognizes CRLFCRLF; composes parser→path→representation→response; on representation `NOT_FOUND` only, and only for a directory-shaped or extensionless path, may retry the configured fallback path; returns KEEP/CLOSE/FATAL | no allocation; header deadline is never reset by bytes received; fallback never masks non-404 classes |
 | `cerv_conn_on_writable` | sending connection, nonzero header/write timeouts | progresses fixed headers/body/file/fallback state with partial-I/O handling; positive writes reset write deadline; EAGAIN/EINTR/no-progress do not; a reusable completed response returns to a cleared RECV_HEADERS state with a fresh per-request header deadline | at most `CERV_SOCKET_IO_QUANTUM` transfer syscalls and `CERV_FILE_SEND_QUANTUM` file bytes per call |
 | `cerv_conn_on_deadline` | active connection and current monotonic/wall time | hard lifetime closes first; expired receive-header deadline installs 408; expired write no-progress deadline closes | O(1); 408 uses fixed response planner |
 

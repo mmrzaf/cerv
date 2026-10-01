@@ -26,6 +26,7 @@ FUZZ_MAX_LEN ?= 17000
 CORE_SRCS := \
     src/base/invariant.c \
     src/base/slice.c \
+    src/base/path.c \
     src/base/checked.c \
     src/base/buffer.c \
     src/base/time.c \

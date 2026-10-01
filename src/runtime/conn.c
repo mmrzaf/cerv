@@ -2,6 +2,7 @@
 #include "runtime/conn.h"
 
 #include "base/checked.h"
+#include "base/path.h"
 #include "http/http_request.h"
 #include "http/http_target.h"
 #include "serve/representation.h"
@@ -128,7 +129,9 @@ static enum cerv_conn_result cerv_conn_install_resource(struct cerv_conn *conn,
                                        unix_seconds, now, write_timeout);
     }
     rep_result = cerv_representation_select(root, &path, &request->accept_encoding, &rep);
+    /* Client-side routes have no file extension; a missing asset such as /app.js stays a real 404. */
     if (rep_result == CERV_REPRESENTATION_NOT_FOUND && spa_fallback != NULL && spa_fallback->len != 0U &&
+        (path.directory_index || !cerv_path_last_segment_has_dot(path.bytes, path.len)) &&
         !(path.len == spa_fallback->len && memcmp(path.bytes, spa_fallback->bytes, path.len) == 0)) {
         cerv_representation_close(&rep);
         rep_result = cerv_representation_select(root, spa_fallback, &request->accept_encoding, &rep);

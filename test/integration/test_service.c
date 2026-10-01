@@ -251,6 +251,25 @@ static void test_client_close_request(const struct cerv_fs_root *root)
     CHECK(close(listener) == 0);
 }
 
+static bool fetch(struct cerv_worker *worker, uint16_t port, const char *target, unsigned char *response,
+                  size_t cap, size_t *used)
+{
+    char request[256];
+    bool ok;
+    int client;
+    unsigned i;
+    int n = snprintf(request, sizeof(request), "GET %s HTTP/1.1\r\nHost: policy\r\nConnection: close\r\n\r\n", target);
+    if (n <= 0 || (size_t)n >= sizeof(request)) return false;
+    client = connect_client(port);
+    if (client < 0) return false;
+    ok = send_all(client, request, (size_t)n) && drive_one_response(worker, client, response, cap, used);
+    for (i = 0U; i < 20U && cerv_worker_active_connections(worker) != 0U; ++i) {
+        if (cerv_worker_run_once(worker, 1) != CERV_WORKER_OK) ok = false;
+    }
+    if (close(client) != 0) ok = false;
+    return ok && cerv_worker_active_connections(worker) == 0U;
+}
+
 static void test_spa_fallback(const struct cerv_fs_root *root)
 {
     uint16_t port = 0U;
@@ -259,8 +278,6 @@ static void test_spa_fallback(const struct cerv_fs_root *root)
     struct cerv_timer_node timer;
     struct cerv_worker worker;
     struct cerv_worker_config config;
-    int client;
-    const char request[] = "GET /dashboard/settings HTTP/1.1\r\nHost: spa\r\nConnection: close\r\n\r\n";
     unsigned char response[4096];
     size_t used = 0U;
     static const char fallback[] = "index.html";
@@ -270,15 +287,55 @@ static void test_spa_fallback(const struct cerv_fs_root *root)
     config.spa_fallback.len = sizeof(fallback) - 1U;
     config.shared_listener_cooperative = false;
     CHECK(cerv_worker_init(&worker, listener, root, &slot, &timer, 1U, config));
-    client = connect_client(port);
-    CHECK(client >= 0);
-    CHECK(send_all(client, request, sizeof(request) - 1U));
-    CHECK(drive_one_response(&worker, client, response, sizeof(response), &used));
+
+    /* Extensionless client-side routes, deep or directory-shaped, receive the fallback document. */
+    CHECK(fetch(&worker, port, "/dashboard/settings", response, sizeof(response), &used));
     CHECK(contains(response, used, "HTTP/1.1 200 OK\r\n"));
     CHECK(contains(response, used, "Content-Type: text/html; charset=utf-8\r\n"));
     CHECK(contains(response, used, "SPA_INDEX"));
     CHECK(contains(response, used, "Connection: close\r\n"));
-    CHECK(close(client) == 0);
+    CHECK(fetch(&worker, port, "/reports/2026/", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 200 OK\r\n") && contains(response, used, "SPA_INDEX"));
+    CHECK(fetch(&worker, port, "/reports.v2/overview", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 200 OK\r\n") && contains(response, used, "SPA_INDEX"));
+
+    /* Missing assets are real 404s: a script URL must never be answered with HTML. */
+    CHECK(fetch(&worker, port, "/missing.js", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 404 Not Found\r\n") && !contains(response, used, "SPA_INDEX"));
+    CHECK(fetch(&worker, port, "/assets/logo.png", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 404 Not Found\r\n") && !contains(response, used, "SPA_INDEX"));
+
+    /* Existing files still win, and hidden paths do not fall back to a document that would mask them. */
+    CHECK(fetch(&worker, port, "/hello.txt", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 200 OK\r\n") && contains(response, used, "HELLO"));
+    CHECK(fetch(&worker, port, "/.env", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 404 Not Found\r\n") && !contains(response, used, "SECRET"));
+    cerv_worker_destroy(&worker);
+    CHECK(close(listener) == 0);
+}
+
+static void test_hidden_files_over_the_wire(const struct cerv_fs_root *root)
+{
+    uint16_t port = 0U;
+    int listener = create_listener(&port);
+    struct cerv_conn slot;
+    struct cerv_timer_node timer;
+    struct cerv_worker worker;
+    struct cerv_worker_config config;
+    unsigned char response[4096];
+    size_t used = 0U;
+    CHECK(listener >= 0);
+    CHECK(cerv_worker_config_default(&config));
+    config.shared_listener_cooperative = false;
+    CHECK(cerv_worker_init(&worker, listener, root, &slot, &timer, 1U, config));
+    CHECK(fetch(&worker, port, "/.env", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 404 Not Found\r\n") && !contains(response, used, "SECRET"));
+    CHECK(fetch(&worker, port, "/%2eenv", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 404 Not Found\r\n") && !contains(response, used, "SECRET"));
+    CHECK(fetch(&worker, port, "/.git/HEAD", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 404 Not Found\r\n"));
+    CHECK(fetch(&worker, port, "/.well-known/security.txt", response, sizeof(response), &used));
+    CHECK(contains(response, used, "HTTP/1.1 200 OK\r\n") && contains(response, used, "Contact:"));
     cerv_worker_destroy(&worker);
     CHECK(close(listener) == 0);
 }
@@ -288,20 +345,33 @@ int main(void)
     char root_dir[] = "/tmp/cerv-service-root-XXXXXX";
     char path[512];
     char index_path[512];
+    char env_path[512];
+    char well_known_dir[512];
+    char well_known_path[512];
     struct cerv_fs_root root = {.fd = -1};
     CHECK(mkdtemp(root_dir) != NULL);
     CHECK(snprintf(path, sizeof(path), "%s/hello.txt", root_dir) > 0);
     CHECK(snprintf(index_path, sizeof(index_path), "%s/index.html", root_dir) > 0);
     CHECK(write_file(path, "HELLO", 5U));
     CHECK(write_file(index_path, "SPA_INDEX", 9U));
+    CHECK(snprintf(env_path, sizeof(env_path), "%s/.env", root_dir) > 0);
+    CHECK(write_file(env_path, "SECRET=1\n", 9U));
+    CHECK(snprintf(well_known_dir, sizeof(well_known_dir), "%s/.well-known", root_dir) > 0);
+    CHECK(mkdir(well_known_dir, 0755) == 0);
+    CHECK(snprintf(well_known_path, sizeof(well_known_path), "%s/security.txt", well_known_dir) > 0);
+    CHECK(write_file(well_known_path, "Contact: mailto:security@example.com\n", 37U));
     CHECK(cerv_fs_root_open(root_dir, &root) == CERV_FS_ROOT_OK);
     test_keepalive_bound(&root);
     test_drain_retires_keepalive(&root);
     test_client_close_request(&root);
     test_spa_fallback(&root);
+    test_hidden_files_over_the_wire(&root);
     cerv_fs_root_close(&root);
     CHECK(unlink(path) == 0);
     CHECK(unlink(index_path) == 0);
+    CHECK(unlink(env_path) == 0);
+    CHECK(unlink(well_known_path) == 0);
+    CHECK(rmdir(well_known_dir) == 0);
     CHECK(rmdir(root_dir) == 0);
     if (failures != 0U) { fprintf(stderr, "service integration: %u/%u failed\n", failures, checks); return EXIT_FAILURE; }
     printf("service integration: %u checks passed\n", checks);

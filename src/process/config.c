@@ -4,6 +4,7 @@
 
 #include "base/bounds.h"
 #include "base/checked.h"
+#include "base/path.h"
 
 #include <arpa/inet.h>
 #include <stdlib.h>
@@ -158,6 +159,8 @@ static bool cerv_parse_spa_fallback(const char *text, unsigned char out[CERV_PAT
         out[write_pos++] = c;
     }
     if (write_pos == segment_start || cerv_segment_dot_or_dotdot(out + segment_start, write_pos - segment_start)) return false;
+    /* A hidden fallback could never be served, so refuse it at startup instead of failing every request. */
+    if (cerv_path_is_hidden(out, write_pos)) return false;
     out[write_pos] = 0U;
     *out_len = write_pos;
     return true;

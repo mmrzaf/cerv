@@ -20,6 +20,7 @@ src/
 │   ├── buffer.c / buffer.h
 │   ├── checked.c / checked.h
 │   ├── invariant.c / invariant.h
+│   ├── path.c / path.h
 │   ├── slice.c / slice.h
 │   └── time.c / cerv_time.h
 ├── http/

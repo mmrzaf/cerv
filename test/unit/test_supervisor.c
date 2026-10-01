@@ -160,6 +160,26 @@ static void test_cli(void)
     CHECK(strstr(cerv_version_text(), CERV_VERSION) != NULL);
 }
 
+static void test_spa_fallback_cli(void)
+{
+    struct cerv_config config;
+    const char *plain[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback", "/index.html", "/tmp"};
+    const char *nested[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback=app/shell.html", "/tmp"};
+    const char *well_known[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback", ".well-known/shell.html", "/tmp"};
+    const char *dotfile[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback", "/.env", "/tmp"};
+    const char *dot_dir[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback", "a/.private/index.html", "/tmp"};
+    const char *dot_segment[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback", "a/../index.html", "/tmp"};
+    CHECK(parse_values(plain, sizeof(plain) / sizeof(plain[0]), &config) == CERV_CONFIG_OK);
+    CHECK(config.spa_fallback_len == strlen("index.html") && memcmp(config.spa_fallback, "index.html", config.spa_fallback_len) == 0);
+    CHECK(parse_values(nested, sizeof(nested) / sizeof(nested[0]), &config) == CERV_CONFIG_OK);
+    CHECK(config.spa_fallback_len == strlen("app/shell.html"));
+    CHECK(parse_values(well_known, sizeof(well_known) / sizeof(well_known[0]), &config) == CERV_CONFIG_OK);
+    /* A hidden fallback could never be served, so it is a startup error rather than a per-request 404. */
+    CHECK(parse_values(dotfile, sizeof(dotfile) / sizeof(dotfile[0]), &config) == CERV_CONFIG_ERROR);
+    CHECK(parse_values(dot_dir, sizeof(dot_dir) / sizeof(dot_dir[0]), &config) == CERV_CONFIG_ERROR);
+    CHECK(parse_values(dot_segment, sizeof(dot_segment) / sizeof(dot_segment[0]), &config) == CERV_CONFIG_ERROR);
+}
+
 static void test_environment_config(void)
 {
     struct cerv_config config;
@@ -322,6 +342,7 @@ int main(void)
     test_cpu_max_parser();
     test_partitions_and_budgets();
     test_cli();
+    test_spa_fallback_cli();
     test_environment_config();
     test_resource_limit();
     test_diag_drop_when_stderr_full();

@@ -33,7 +33,7 @@ Those four clauses are not marketing language. They are acceptance tests for eve
 | Range | One byte range only; no multipart ranges |
 | Cache | Conservative revalidation by default; immutable caching only by explicit operator assertion |
 | Configuration | Built-in defaults < native `CERV_*` environment < CLI; immutable after startup |
-| SPA fallback | Optional one-file 404 fallback; disabled by default; not a route/rewrite engine |
+| SPA fallback | Optional one-file 404 fallback for extensionless routes; disabled by default; not a route/rewrite engine |
 | Logging | No synchronous access log in the core v1 runtime; bounded lifecycle/fatal diagnostics only |
 | TLS / H2 / H3 | Out of scope; terminate at a reverse proxy/CDN when needed |
 | Verification | Dual compiler, sanitizers, fuzzing, static analysis, adversarial integration tests, bounded model checking for suitable pure/bounded helpers |
