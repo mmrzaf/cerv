@@ -54,6 +54,10 @@ The resulting image contains the built static application and Cerv, not Node/npm
 
 SPA fallback is opt-in because a generic static origin should return real 404s. When enabled, only representation-level 404s are retried against the configured fallback file.
 
+## Package mirrors
+
+The build stage installs its compiler from the base image's own Debian sources, so a plain `docker build .` needs no configuration. Hosts that must use a local package mirror pass both `--build-arg DEBIAN_MIRROR=URL` and `--build-arg DEBIAN_SECURITY_MIRROR=URL`; supplying only one is a build error. Package signatures are still verified against the Debian archive keyring.
+
 ## Capacity in containers
 
 Container runtimes inherit or configure process `RLIMIT_NOFILE`; the image cannot safely assume a particular value. `CERV_MAX_CONNECTIONS=auto` therefore remains the image default. It caps the 4096 service-wide target to the current worker and FD environment so the default configuration remains valid under ordinary container limits.

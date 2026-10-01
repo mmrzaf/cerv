@@ -1,23 +1,29 @@
 ARG BASE_IMAGE=debian:trixie
 FROM ${BASE_IMAGE} AS build
 
-ARG DEBIAN_MIRROR=http://linux-mirror.liara.ir/repository/debian
-ARG DEBIAN_SECURITY_MIRROR=http://linux-mirror.liara.ir/repository/debian-security
+# Optional apt mirror override. When empty, the base image's own Debian sources
+# are used unchanged. Both values must be set together.
+ARG DEBIAN_MIRROR=
+ARG DEBIAN_SECURITY_MIRROR=
 
 RUN set -eu; \
-    printf '%s\n' \
-      'Types: deb' \
-      "URIs: ${DEBIAN_MIRROR}" \
-      'Suites: trixie trixie-updates' \
-      'Components: main' \
-      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-      '' \
-      'Types: deb' \
-      "URIs: ${DEBIAN_SECURITY_MIRROR}" \
-      'Suites: trixie-security' \
-      'Components: main' \
-      'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-      > /etc/apt/sources.list.d/debian.sources; \
+    if [ -n "${DEBIAN_MIRROR}${DEBIAN_SECURITY_MIRROR}" ]; then \
+      : "${DEBIAN_MIRROR:?DEBIAN_MIRROR and DEBIAN_SECURITY_MIRROR must be set together}"; \
+      : "${DEBIAN_SECURITY_MIRROR:?DEBIAN_MIRROR and DEBIAN_SECURITY_MIRROR must be set together}"; \
+      printf '%s\n' \
+        'Types: deb' \
+        "URIs: ${DEBIAN_MIRROR}" \
+        'Suites: trixie trixie-updates' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        '' \
+        'Types: deb' \
+        "URIs: ${DEBIAN_SECURITY_MIRROR}" \
+        'Suites: trixie-security' \
+        'Components: main' \
+        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
+        > /etc/apt/sources.list.d/debian.sources; \
+    fi; \
     apt-get update; \
     apt-get install -y --no-install-recommends build-essential; \
     rm -rf /var/lib/apt/lists/*
