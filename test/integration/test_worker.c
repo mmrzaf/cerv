@@ -527,13 +527,21 @@ static int child_accept_emfile(const struct cerv_fs_root *root)
         return 15;
     }
     if (fill_count == sizeof(fillers) / sizeof(fillers[0])) return 16;
+    /* Descriptor exhaustion on accept is survivable: the worker backs off instead of failing. */
     result = cerv_worker_run_once(&worker, 50);
+    if (result != CERV_WORKER_OK) return 17;
+    if (worker.listener_registered || !worker.accept_backoff || cerv_worker_active_connections(&worker) != 0U) return 18;
     for (i = 0U; i < fill_count; ++i) (void)close(fillers[i]);
     (void)setrlimit(RLIMIT_NOFILE, &original);
+    /* After the bounded backoff the listener is re-armed and the backlogged client is served. */
+    for (i = 0U; i < 100U && (!worker.listener_registered || cerv_worker_active_connections(&worker) == 0U); ++i) {
+        if (cerv_worker_run_once(&worker, 20) != CERV_WORKER_OK) return 19;
+    }
+    if (!worker.listener_registered || worker.accept_backoff || cerv_worker_active_connections(&worker) != 1U) return 20;
     (void)close(client);
     cerv_worker_destroy(&worker);
     (void)close(listener);
-    return result == CERV_WORKER_RESOURCE_EXHAUSTED ? 0 : 17;
+    return 0;
 }
 
 static void test_accept_fd_exhaustion(const struct cerv_fs_root *root)

@@ -21,7 +21,6 @@ struct cerv_worker_config {
 
 enum cerv_worker_result {
     CERV_WORKER_OK = 0,
-    CERV_WORKER_RESOURCE_EXHAUSTED,
     CERV_WORKER_CONTROL_READY,
     CERV_WORKER_FATAL
 };
@@ -36,6 +35,8 @@ struct cerv_worker {
     struct cerv_worker_config config;
     bool accepting;
     bool listener_registered;
+    bool accept_backoff;
+    struct cerv_mono_time accept_resume_at;
 };
 
 bool cerv_worker_prepare_process(void);

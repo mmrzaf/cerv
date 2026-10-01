@@ -134,7 +134,8 @@ static bool cerv_worker_release_conn(struct cerv_worker *worker, struct cerv_con
     if (socket_fd >= 0) (void)epoll_ctl(worker->epoll_fd, EPOLL_CTL_DEL, socket_fd, NULL);
     cerv_conn_cleanup(conn);
     if (!cerv_conn_arena_release(&worker->arena, conn)) return false;
-    if (worker->accepting && !worker->listener_registered && worker->arena.active < worker->arena.capacity) {
+    if (worker->accepting && !worker->listener_registered && !worker->accept_backoff &&
+        worker->arena.active < worker->arena.capacity) {
         return cerv_worker_listener_add(worker);
     }
     return true;
@@ -161,6 +162,7 @@ void cerv_worker_destroy(struct cerv_worker *worker)
     worker->control_fd = -1;
     worker->accepting = false;
     worker->listener_registered = false;
+    worker->accept_backoff = false;
     worker->arena.active = 0U;
 }
 
@@ -224,6 +226,32 @@ static bool cerv_accept_resource_error(int error_number)
     return error_number == EMFILE || error_number == ENFILE || error_number == ENOBUFS || error_number == ENOMEM;
 }
 
+/*
+ * Transient local resource exhaustion (descriptor tables, kernel memory) must not kill the worker and every
+ * connection it serves. The listener is unregistered so a level-triggered readable backlog cannot spin the loop,
+ * and is re-armed after a fixed interval, by which time in-flight work has usually released descriptors.
+ */
+static bool cerv_worker_accept_backoff_begin(struct cerv_worker *worker)
+{
+    struct cerv_duration interval;
+    struct cerv_mono_time now;
+    if (!cerv_duration_from_ms(CERV_ACCEPT_BACKOFF_MS, &interval) || !cerv_clock_mono_now(&now)) return false;
+    if (!cerv_worker_listener_remove(worker)) return false;
+    worker->accept_backoff = true;
+    worker->accept_resume_at = cerv_mono_add_saturating(now, interval);
+    return true;
+}
+
+static enum cerv_worker_result cerv_worker_accept_backoff_end(struct cerv_worker *worker, struct cerv_mono_time now)
+{
+    if (!worker->accept_backoff || now.ns < worker->accept_resume_at.ns) return CERV_WORKER_OK;
+    worker->accept_backoff = false;
+    if (!worker->accepting || worker->listener_registered || worker->arena.active >= worker->arena.capacity) {
+        return CERV_WORKER_OK;
+    }
+    return cerv_worker_listener_add(worker) ? CERV_WORKER_OK : CERV_WORKER_FATAL;
+}
+
 static bool cerv_worker_overload_reject(int fd)
 {
     struct cerv_response_plan plan;
@@ -272,7 +300,8 @@ static enum cerv_worker_result cerv_worker_admit(struct cerv_worker *worker, int
         int error_number = errno;
         cerv_conn_cleanup(conn);
         if (!cerv_conn_arena_release(&worker->arena, conn)) return CERV_WORKER_FATAL;
-        return (error_number == ENOSPC || error_number == ENOMEM) ? CERV_WORKER_RESOURCE_EXHAUSTED : CERV_WORKER_FATAL;
+        if (error_number != ENOSPC && error_number != ENOMEM) return CERV_WORKER_FATAL;
+        return cerv_worker_accept_backoff_begin(worker) ? CERV_WORKER_OK : CERV_WORKER_FATAL;
     }
     if (!cerv_worker_timer_sync(worker, conn)) {
         (void)cerv_worker_release_conn(worker, conn);
@@ -315,7 +344,9 @@ static enum cerv_worker_result cerv_worker_accept_ready(struct cerv_worker *work
         }
         if (errno == EINTR || cerv_accept_transient_error(errno)) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) return cerv_worker_listener_yield(worker, accepted_any);
-        if (cerv_accept_resource_error(errno)) return CERV_WORKER_RESOURCE_EXHAUSTED;
+        if (cerv_accept_resource_error(errno)) {
+            return cerv_worker_accept_backoff_begin(worker) ? CERV_WORKER_OK : CERV_WORKER_FATAL;
+        }
         return CERV_WORKER_FATAL;
     }
     return cerv_worker_listener_yield(worker, accepted_any);
@@ -387,6 +418,11 @@ static int cerv_worker_wait_timeout(const struct cerv_worker *worker, int max_wa
         int timer_timeout = remaining > (uint64_t)INT_MAX ? INT_MAX : (int)remaining;
         if (timeout < 0 || timer_timeout < timeout) timeout = timer_timeout;
     }
+    if (worker->accept_backoff) {
+        uint64_t remaining = cerv_mono_remaining_ms_ceil(now, worker->accept_resume_at);
+        int backoff_timeout = remaining > (uint64_t)INT_MAX ? INT_MAX : (int)remaining;
+        if (timeout < 0 || backoff_timeout < timeout) timeout = backoff_timeout;
+    }
     return timeout;
 }
 
@@ -403,6 +439,8 @@ enum cerv_worker_result cerv_worker_run_once(struct cerv_worker *worker, int max
     result = cerv_worker_expire(worker);
     if (result != CERV_WORKER_OK) return result;
     if (!cerv_clock_mono_now(&now)) return CERV_WORKER_FATAL;
+    result = cerv_worker_accept_backoff_end(worker, now);
+    if (result != CERV_WORKER_OK) return result;
     timeout = cerv_worker_wait_timeout(worker, max_wait_ms, now);
     count = epoll_wait(worker->epoll_fd, events, (int)CERV_EPOLL_BATCH_MAX, timeout);
     if (count < 0) {
@@ -427,6 +465,9 @@ enum cerv_worker_result cerv_worker_run_once(struct cerv_worker *worker, int max
         if (result != CERV_WORKER_OK) return result;
     }
     result = cerv_worker_expire(worker);
+    if (result != CERV_WORKER_OK) return result;
+    if (!cerv_clock_mono_now(&now)) return CERV_WORKER_FATAL;
+    result = cerv_worker_accept_backoff_end(worker, now);
     if (result != CERV_WORKER_OK) return result;
     return control_ready ? CERV_WORKER_CONTROL_READY : CERV_WORKER_OK;
 }

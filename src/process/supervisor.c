@@ -27,7 +27,6 @@
 #include <unistd.h>
 
 #define CERV_CHILD_EXIT_RUNTIME 70
-#define CERV_CHILD_EXIT_RESOURCE 71
 #define CERV_CHILD_EXIT_STARTUP 72
 
 struct cerv_start_record {
@@ -266,10 +265,6 @@ static int cerv_worker_child(size_t worker_index, size_t slots_count, int listen
                 break;
             }
             continue;
-        }
-        if (result == CERV_WORKER_RESOURCE_EXHAUSTED) {
-            exit_code = CERV_CHILD_EXIT_RESOURCE;
-            break;
         }
         if (result != CERV_WORKER_OK) {
             exit_code = CERV_CHILD_EXIT_RUNTIME;

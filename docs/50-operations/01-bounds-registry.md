@@ -16,6 +16,7 @@ A single machine-readable/header-level bounds registry SHOULD eventually drive b
 | CERV_ERROR_BODY_MAX | Constant error body | 256 |
 | CERV_EPOLL_BATCH_MAX | Events returned per wait | 256 |
 | CERV_ACCEPT_QUANTUM | Accepted sockets per listener dispatch | 64 |
+| CERV_ACCEPT_BACKOFF_MS | Interval a worker stops accepting after local descriptor/memory exhaustion before re-arming its listener | 100 ms |
 | CERV_FILE_SEND_QUANTUM | File bytes attempted per connection dispatch | 1 MiB |
 | CERV_SOCKET_IO_QUANTUM | Receive/send/pread/sendfile progress syscall attempts per connection dispatch | 64 |
 | CERV_KEEPALIVE_REQUESTS_MAX | Maximum sequential requests on one HTTP/1.1 connection | 64 |

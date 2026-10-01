@@ -75,6 +75,8 @@ The baseline accept budget is 64 accept/reject attempts per listener dispatch.
 
 Linux may surface certain pending network errors through `accept()`/`accept4()`. The implementation SHALL classify documented transient network errors appropriately rather than treating every non-EAGAIN error as a fatal server failure.
 
+Local resource exhaustion surfaced by `accept4()` (`EMFILE`, `ENFILE`, `ENOBUFS`, `ENOMEM`) or by registering a new connection with epoll (`ENOSPC`, `ENOMEM`) is survivable. It is not a reason to terminate the worker and every in-flight response with it. The worker unregisters its listener, so a level-triggered readable backlog cannot spin the loop, and re-arms it after `CERV_ACCEPT_BACKOFF_MS`. Existing connections keep being served throughout, and completed connections wait in the kernel backlog. The same fixed interval applies to every occurrence; there is no unbounded or exponential state.
+
 ## Stale epoll event defense
 
 Connection slots are reused. An epoll event that was queued for an old FD/slot lifetime must not be allowed to act on a newly reused slot.
