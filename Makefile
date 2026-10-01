@@ -439,4 +439,5 @@ help:
 	  'make verification-check Complete local verification pipeline' \
 	  'make release-check     Verification pipeline plus container smoke check'
 
--include $(DEBUG_OBJS:.o=.d) $(RELEASE_OBJS:.o=.d)
+-include $(DEBUG_OBJS:.o=.d) $(RELEASE_OBJS:.o=.d) $(TEST_GCC_OBJS:.o=.d) $(TEST_CLANG_OBJS:.o=.d) \
+        $(SAN_OBJS:.o=.d) $(COVERAGE_OBJS:.o=.d) $(FUZZ_CORE_OBJS:.o=.d)
