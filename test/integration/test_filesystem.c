@@ -916,6 +916,15 @@ static void test_media_types(void)
         {"x.avif", "image/avif"}, {"x.ico", "image/x-icon"}, {"x.woff", "font/woff"},
         {"x.woff2", "font/woff2"}, {"x.pdf", "application/pdf"}, {"x.mp4", "video/mp4"},
         {"x.webm", "video/webm"}, {"x.mp3", "audio/mpeg"}, {"x.ogg", "audio/ogg"},
+        {"x.otf", "font/otf"}, {"x.TTF", "font/ttf"}, {"site.webmanifest", "application/manifest+json"},
+        {"x.csv", "text/csv; charset=utf-8"}, {"x.md", "text/markdown; charset=utf-8"},
+        {"x.vtt", "text/vtt; charset=utf-8"}, {"x.ics", "text/calendar; charset=utf-8"},
+        {"x.xhtml", "application/xhtml+xml"}, {"x.atom", "application/atom+xml"},
+        {"x.jsonld", "application/ld+json"}, {"x.yaml", "application/yaml"}, {"x.yml", "application/yaml"},
+        {"x.bmp", "image/bmp"}, {"x.tif", "image/tiff"}, {"x.tiff", "image/tiff"}, {"x.jxl", "image/jxl"},
+        {"x.apng", "image/apng"}, {"x.m4a", "audio/mp4"}, {"x.flac", "audio/flac"}, {"x.opus", "audio/ogg"},
+        {"x.mov", "video/quicktime"}, {"x.ogv", "video/ogg"}, {"x.zip", "application/zip"},
+        {"x.gz", "application/gzip"}, {"app.js.gz", "application/gzip"},
         {"archive.unknown", "application/octet-stream"}, {"noext", "application/octet-stream"},
         {"dir.with.dot/file", "application/octet-stream"}, {"trailing.", "application/octet-stream"}
     };

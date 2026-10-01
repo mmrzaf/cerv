@@ -132,8 +132,31 @@ The baseline media-type table SHALL include at least:
 .mp4            video/mp4
 .webm           video/webm
 .mp3            audio/mpeg
-.ogg            audio/ogg
+.ogg .opus      audio/ogg
+.otf            font/otf
+.ttf            font/ttf
+.webmanifest    application/manifest+json
+.csv            text/csv; charset=utf-8
+.md             text/markdown; charset=utf-8
+.vtt            text/vtt; charset=utf-8
+.ics            text/calendar; charset=utf-8
+.xhtml          application/xhtml+xml
+.atom           application/atom+xml
+.jsonld         application/ld+json
+.yaml .yml      application/yaml
+.bmp            image/bmp
+.tif .tiff      image/tiff
+.jxl            image/jxl
+.apng           image/apng
+.m4a            audio/mp4
+.flac           audio/flac
+.mov            video/quicktime
+.ogv            video/ogg
+.zip            application/zip
+.gz             application/gzip
 ```
+
+`.gz` is listed for a deliberately requested archive. A request for `/app.js` that is answered from `app.js.gz` is typed by the logical name (`text/javascript`) with `Content-Encoding: gzip`, never by the sidecar suffix.
 
 The table SHALL use IANA-registered media types where registrations exist. Additions require a normative documentation and test update; unknown extensions use Cerv's documented binary fallback type.
 

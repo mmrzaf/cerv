@@ -34,7 +34,16 @@ const char *cerv_media_type_for_path(const struct cerv_path *path)
         {"jpeg", "image/jpeg"}, {"gif", "image/gif"}, {"webp", "image/webp"},
         {"avif", "image/avif"}, {"ico", "image/x-icon"}, {"woff", "font/woff"},
         {"woff2", "font/woff2"}, {"pdf", "application/pdf"}, {"mp4", "video/mp4"},
-        {"webm", "video/webm"}, {"mp3", "audio/mpeg"}, {"ogg", "audio/ogg"}
+        {"webm", "video/webm"}, {"mp3", "audio/mpeg"}, {"ogg", "audio/ogg"},
+        {"otf", "font/otf"}, {"ttf", "font/ttf"}, {"webmanifest", "application/manifest+json"},
+        {"csv", "text/csv; charset=utf-8"}, {"md", "text/markdown; charset=utf-8"},
+        {"vtt", "text/vtt; charset=utf-8"}, {"ics", "text/calendar; charset=utf-8"},
+        {"xhtml", "application/xhtml+xml"}, {"atom", "application/atom+xml"},
+        {"jsonld", "application/ld+json"}, {"yaml", "application/yaml"}, {"yml", "application/yaml"},
+        {"bmp", "image/bmp"}, {"tif", "image/tiff"}, {"tiff", "image/tiff"}, {"jxl", "image/jxl"},
+        {"apng", "image/apng"}, {"m4a", "audio/mp4"}, {"flac", "audio/flac"}, {"opus", "audio/ogg"},
+        {"mov", "video/quicktime"}, {"ogv", "video/ogg"}, {"zip", "application/zip"},
+        {"gz", "application/gzip"}
     };
     size_t dot = 0U;
     size_t i;
