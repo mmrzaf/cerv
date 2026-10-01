@@ -2,6 +2,10 @@
 
 Cerv is deliberately small, bounded, and Linux-specific. Changes should preserve those properties before optimizing convenience or breadth.
 
+## License
+
+Cerv is MIT-licensed. By contributing you agree that your contribution is licensed under the same terms.
+
 ## Branch and change flow
 
 `develop` is the integration branch. Normal changes should be proposed against `develop`, kept focused, and merged only after the applicable verification gates pass. Release tags are created by a maintainer from a reviewed commit; automation validates and publishes tags but never creates or moves them.

@@ -36,7 +36,7 @@ def main() -> int:
 
     root = args.source_root.resolve()
     included_roots = ("src/", "docs/", "proof/", "fuzz/", "test/", "tools/", "bench/", "deploy/", ".github/")
-    top_files = {"Makefile", "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "SECURITY.md", "VERSION", "RELEASE_EPOCH", ".clang-tidy", ".dockerignore", ".editorconfig", ".gitattributes", ".gitignore", "Dockerfile"}
+    top_files = {"Makefile", "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "SECURITY.md", "LICENSE", "VERSION", "RELEASE_EPOCH", ".clang-tidy", ".dockerignore", ".editorconfig", ".gitattributes", ".gitignore", "Dockerfile"}
     files: list[dict[str, object]] = []
     file_rels: list[str] = []
     for p in sorted(root.rglob("*")):
@@ -81,9 +81,9 @@ def main() -> int:
             "versionInfo": args.version,
             "downloadLocation": "NOASSERTION",
             "filesAnalyzed": True,
-            "licenseConcluded": "NOASSERTION",
-            "licenseDeclared": "NOASSERTION",
-            "copyrightText": "NOASSERTION",
+            "licenseConcluded": "MIT",
+            "licenseDeclared": "MIT",
+            "copyrightText": "Copyright (c) 2026 mmrzaf",
             "checksums": [{"algorithm": "SHA256", "checksumValue": sha256(args.binary)}],
             "externalRefs": [
                 {"referenceCategory": "OTHER", "referenceType": "cerv-compiler", "referenceLocator": args.compiler},

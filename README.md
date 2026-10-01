@@ -170,6 +170,10 @@ A hosted release publishes:
 
 A tag with a SemVer suffix is treated as a GitHub prerelease and does not receive `latest` or stable major/minor image aliases. An exact stable version tag receives the stable GHCR aliases.
 
+## License
+
+Cerv is released under the [MIT License](LICENSE). The license text ships in the source and binary bundles and in the container image, and the SBOM declares it.
+
 ## Source architecture
 
 ```text

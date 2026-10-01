@@ -40,6 +40,8 @@ RUN make -j"$(nproc)" release hardening-check \
     && strip --strip-unneeded /out/cerv
 
 FROM scratch AS runtime
+LABEL org.opencontainers.image.licenses="MIT"
+COPY LICENSE /LICENSE
 COPY --from=build /out/cerv /cerv
 
 USER 65532:65532

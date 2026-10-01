@@ -119,6 +119,7 @@ jobs:
           provenance: mode=max
           sbom: true
           labels: |
+            org.opencontainers.image.licenses=MIT
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.release.outputs.tag }}
