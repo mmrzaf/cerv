@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -96,10 +97,32 @@ static void cerv_supervisor_diag_resource_failure(const struct cerv_config *conf
     cerv_diag_message("error", "startup", detail);
 }
 
+static bool cerv_signal_is_shutdown(uint32_t signo)
+{
+    return signo == (uint32_t)SIGTERM || signo == (uint32_t)SIGINT || signo == (uint32_t)SIGHUP;
+}
+
+static const char *cerv_signal_name(uint32_t signo)
+{
+    if (signo == (uint32_t)SIGTERM) return "SIGTERM";
+    if (signo == (uint32_t)SIGINT) return "SIGINT";
+    if (signo == (uint32_t)SIGHUP) return "SIGHUP";
+    return "signal";
+}
+
+/*
+ * SIGTERM, SIGINT, and SIGHUP all request graceful shutdown. Cerv has no configuration reload, so a terminal
+ * hangup has no better meaning, and its default action would otherwise kill the master abruptly. A process
+ * started with SIGHUP ignored (nohup, daemon launchers) keeps it ignored; the disposition survives fork, so
+ * workers inherit it.
+ */
 static bool cerv_supervisor_signal_mask(sigset_t *mask)
 {
+    struct sigaction hangup;
     if (mask == NULL || sigemptyset(mask) != 0 || sigaddset(mask, SIGTERM) != 0 ||
         sigaddset(mask, SIGINT) != 0 || sigaddset(mask, SIGCHLD) != 0) return false;
+    if (sigaction(SIGHUP, NULL, &hangup) != 0) return false;
+    if (hangup.sa_handler != SIG_IGN && sigaddset(mask, SIGHUP) != 0) return false;
     return sigprocmask(SIG_BLOCK, mask, NULL) == 0;
 }
 
@@ -179,7 +202,8 @@ static bool cerv_write_start_record(int fd, size_t worker_index, enum cerv_landl
 static bool cerv_worker_signal_fd(int *out)
 {
     sigset_t mask;
-    if (out == NULL || sigemptyset(&mask) != 0 || sigaddset(&mask, SIGTERM) != 0 || sigaddset(&mask, SIGINT) != 0) {
+    if (out == NULL || sigemptyset(&mask) != 0 || sigaddset(&mask, SIGTERM) != 0 || sigaddset(&mask, SIGINT) != 0 ||
+        sigaddset(&mask, SIGHUP) != 0) {
         return false;
     }
     *out = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
@@ -201,7 +225,7 @@ static bool cerv_worker_consume_control(int signal_fd, bool *draining, struct ce
         if (n == 0 || (size_t)n % sizeof(info[0]) != 0U) return false;
         count = (size_t)n / sizeof(info[0]);
         for (i = 0U; i < count; ++i) {
-            if (info[i].ssi_signo != (uint32_t)SIGTERM && info[i].ssi_signo != (uint32_t)SIGINT) return false;
+            if (!cerv_signal_is_shutdown(info[i].ssi_signo)) return false;
             if (!*draining) {
                 if (!cerv_worker_stop_accepting(worker)) return false;
                 *draining = true;
@@ -213,7 +237,7 @@ static bool cerv_worker_consume_control(int signal_fd, bool *draining, struct ce
 static int cerv_worker_child(size_t worker_index, size_t slots_count, int listener_fd,
                              struct cerv_fs_root *root, int master_signal_fd,
                              int startup_read_fd, int startup_write_fd,
-                             const struct cerv_config *config)
+                             const struct cerv_config *config, pid_t master_pid)
 {
     struct cerv_conn *slots = NULL;
     struct cerv_timer_node *timers = NULL;
@@ -227,6 +251,12 @@ static int cerv_worker_child(size_t worker_index, size_t slots_count, int listen
     (void)close(startup_read_fd);
     (void)close(master_signal_fd);
     cerv_diag_close();
+    /*
+     * A worker must never outlive its master: an orphan keeps the listener bound and serves with nobody left to
+     * supervise or drain it. The death signal is SIGTERM, which the worker already handles as a graceful drain
+     * through its signalfd. Parent death before the request took effect is detected explicitly.
+     */
+    if (prctl(PR_SET_PDEATHSIG, (unsigned long)SIGTERM, 0UL, 0UL, 0UL) != 0 || getppid() != master_pid) goto done;
     if (!cerv_worker_signal_fd(&signal_fd)) goto done;
     slots = calloc(slots_count, sizeof(*slots));
     timers = calloc(slots_count, sizeof(*timers));
@@ -411,7 +441,7 @@ bool cerv_supervisor_wait_startup(int signal_fd, int pipe_fd, const pid_t pids[]
                         bool fatal = false;
                         (void)cerv_reap_children(pids, alive, worker_count, false, false, &fatal);
                         if (fatal) return false;
-                    } else if (infos[i].ssi_signo == (uint32_t)SIGTERM || infos[i].ssi_signo == (uint32_t)SIGINT) {
+                    } else if (cerv_signal_is_shutdown(infos[i].ssi_signo)) {
                         return false;
                     }
                 }
@@ -460,6 +490,7 @@ int cerv_supervisor_run(const struct cerv_config *config)
     size_t i;
     bool landlock_all = false;
     struct cerv_duration startup_timeout;
+    const pid_t master_pid = getpid();
     cerv_diag_prepare();
     if (config == NULL || config->workers == 0U || config->workers > CERV_WORKERS_MAX ||
         !cerv_duration_from_ms(CERV_STARTUP_READY_TIMEOUT_MS, &startup_timeout)) return 1;
@@ -497,7 +528,7 @@ int cerv_supervisor_run(const struct cerv_config *config)
         if (pid < (pid_t)0) goto startup_fail;
         if (pid == (pid_t)0) {
             int child_code = cerv_worker_child(i, slots_count, listener_fd, &root, signal_fd,
-                                               startup_pipe[0], startup_pipe[1], run_config);
+                                               startup_pipe[0], startup_pipe[1], run_config, master_pid);
             _exit(child_code);
         }
         pids[i] = pid;
@@ -566,9 +597,9 @@ int cerv_supervisor_run(const struct cerv_config *config)
                             if (!cerv_start_draining(pids, alive, run_config->workers, run_config->shutdown_timeout,
                                                      &shutdown_deadline)) fatal = true;
                         }
-                    } else if (signo == (uint32_t)SIGTERM || signo == (uint32_t)SIGINT) {
+                    } else if (cerv_signal_is_shutdown(signo)) {
                         if (!draining) {
-                            cerv_diag_message("info", "shutdown_start", signo == (uint32_t)SIGTERM ? "SIGTERM" : "SIGINT");
+                            cerv_diag_message("info", "shutdown_start", cerv_signal_name(signo));
                             draining = true;
                             if (!cerv_start_draining(pids, alive, run_config->workers, run_config->shutdown_timeout,
                                                      &shutdown_deadline)) fatal = true;

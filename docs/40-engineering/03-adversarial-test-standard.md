@@ -184,7 +184,7 @@ Verify:
 
 ## Signal/shutdown tests
 
-Test SIGTERM/SIGINT:
+Test SIGTERM/SIGINT/SIGHUP:
 
 - idle server;
 - during header receive;
@@ -194,7 +194,9 @@ Test SIGTERM/SIGINT:
 - during saturation;
 - with one worker unexpectedly killed;
 - repeated termination signal;
-- shutdown deadline expiry.
+- shutdown deadline expiry;
+- SIGHUP draining like SIGTERM, and staying ignored when it was ignored at startup;
+- master killed with SIGKILL, asserting every worker drains out and exits instead of serving as an orphan.
 
 All children SHALL be reaped. No listening socket or temporary process should survive the test harness.
 

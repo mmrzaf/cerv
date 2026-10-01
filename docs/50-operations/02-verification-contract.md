@@ -56,7 +56,7 @@ A Cerv release is acceptable only when the applicable requirements below are sat
 
 ## Operations
 
-- SIGTERM/SIGINT drain behavior is documented and tested.
+- SIGTERM/SIGINT/SIGHUP drain behavior, ignored-SIGHUP semantics, and worker exit on master death are documented and tested.
 - Worker crash behavior is documented and tested.
 - Stress tests leave no zombies or FD leaks.
 - Foreground systemd/container deployments are documented.

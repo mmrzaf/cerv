@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -95,6 +96,20 @@ static pid_t spawn_supervisor(const struct cerv_config *config)
 {
     pid_t pid = fork();
     if (pid == (pid_t)0) exit(cerv_supervisor_run(config));
+    return pid;
+}
+
+/* Starts the supervisor the way nohup would: SIGHUP already ignored when Cerv begins. */
+static pid_t spawn_supervisor_ignoring_hangup(const struct cerv_config *config)
+{
+    pid_t pid = fork();
+    if (pid == (pid_t)0) {
+        struct sigaction ignore;
+        memset(&ignore, 0, sizeof(ignore));
+        ignore.sa_handler = SIG_IGN;
+        if (sigemptyset(&ignore.sa_mask) != 0 || sigaction(SIGHUP, &ignore, NULL) != 0) _exit(90);
+        exit(cerv_supervisor_run(config));
+    }
     return pid;
 }
 
@@ -304,6 +319,93 @@ static void test_clean_and_proxy(const char *root)
     CHECK(workers_gone(workers, 3U));
 }
 
+static void test_hangup_shuts_down_gracefully(const char *root)
+{
+    struct cerv_config config;
+    uint16_t port = choose_port();
+    pid_t master;
+    pid_t workers[2] = {0};
+    int status = 0;
+    CHECK(make_config(&config, root, port, 2U, 4U, 1000U, 1000U, 5000U, 1000U));
+    master = spawn_supervisor(&config);
+    CHECK(master > (pid_t)0 && wait_children(master, 2U, workers) && wait_ready(port));
+    if (master <= (pid_t)0) return;
+    CHECK(kill(master, SIGHUP) == 0);
+    CHECK(wait_master(master, 3000U, &status));
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    sleep_ms(30U);
+    CHECK(workers_gone(workers, 2U));
+}
+
+static void test_ignored_hangup_stays_ignored(const char *root)
+{
+    struct cerv_config config;
+    uint16_t port = choose_port();
+    pid_t master;
+    pid_t workers[2] = {0};
+    int status = 0;
+    CHECK(make_config(&config, root, port, 2U, 4U, 1000U, 1000U, 5000U, 1000U));
+    master = spawn_supervisor_ignoring_hangup(&config);
+    CHECK(master > (pid_t)0 && wait_children(master, 2U, workers) && wait_ready(port));
+    if (master <= (pid_t)0) return;
+    CHECK(kill(master, SIGHUP) == 0);
+    CHECK(kill(workers[0], SIGHUP) == 0);
+    CHECK(kill(workers[1], SIGHUP) == 0);
+    sleep_ms(200U);
+    /* nohup semantics: the service ignores the hangup entirely and keeps serving. */
+    CHECK(waitpid(master, &status, WNOHANG) == (pid_t)0);
+    CHECK(request_ok(port, "GET /hello.txt HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n"));
+    CHECK(kill(master, SIGTERM) == 0);
+    CHECK(wait_master(master, 3000U, &status));
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
+static bool reap_with_timeout(pid_t pid, unsigned timeout_ms, int *status)
+{
+    unsigned elapsed = 0U;
+    while (elapsed <= timeout_ms) {
+        pid_t got = waitpid(pid, status, WNOHANG);
+        if (got == pid) return true;
+        if (got < (pid_t)0 && errno != EINTR) return false;
+        sleep_ms(10U);
+        elapsed += 10U;
+    }
+    return false;
+}
+
+static void test_workers_die_with_master(const char *root)
+{
+    struct cerv_config config;
+    uint16_t port = choose_port();
+    pid_t master;
+    pid_t workers[3] = {0};
+    size_t i;
+    int status = 0;
+    /* Adopt orphans so their exit status is observable instead of vanishing into init. */
+    CHECK(prctl(PR_SET_CHILD_SUBREAPER, 1UL, 0UL, 0UL, 0UL) == 0);
+    CHECK(make_config(&config, root, port, 3U, 6U, 1000U, 1000U, 5000U, 1000U));
+    master = spawn_supervisor(&config);
+    CHECK(master > (pid_t)0 && wait_children(master, 3U, workers) && wait_ready(port));
+    if (master <= (pid_t)0) { (void)prctl(PR_SET_CHILD_SUBREAPER, 0UL, 0UL, 0UL, 0UL); return; }
+    CHECK(kill(master, SIGKILL) == 0);
+    CHECK(waitpid(master, &status, 0) == master);
+    CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL);
+    /* Nothing supervises the workers any more; each must notice and drain out instead of serving forever. */
+    for (i = 0U; i < 3U; ++i) {
+        int worker_status = 0;
+        bool exited = reap_with_timeout(workers[i], 3000U, &worker_status);
+        CHECK(exited);
+        CHECK(exited && WIFEXITED(worker_status) && WEXITSTATUS(worker_status) == 0);
+        if (!exited) {
+            /* A failing run must not leave a serving orphan behind. */
+            (void)kill(workers[i], SIGKILL);
+            (void)waitpid(workers[i], &worker_status, 0);
+        }
+    }
+    CHECK(!request_ok(port, "GET /hello.txt HTTP/1.1\r\nHost: test\r\nConnection: close\r\n\r\n"));
+    CHECK(prctl(PR_SET_CHILD_SUBREAPER, 0UL, 0UL, 0UL, 0UL) == 0);
+}
+
 static void test_graceful_drain(const char *root)
 {
     struct cerv_config config;
@@ -461,6 +563,9 @@ int main(void)
     (void)snprintf(path, sizeof(path), "%s/hello.txt", root);
     CHECK(write_file(path, "HELLO"));
     test_clean_and_proxy(root);
+    test_hangup_shuts_down_gracefully(root);
+    test_ignored_hangup_stays_ignored(root);
+    test_workers_die_with_master(root);
     test_graceful_drain(root);
     test_hard_deadline_and_second_signal(root);
     test_worker_crash(root);

@@ -147,7 +147,7 @@ A malformed environment value that is actually selected by precedence is also a 
 
 ## No reload
 
-Cerv does not reload configuration in place. Configuration changes use a process restart/rolling deployment. This removes signal/config concurrency and keeps every worker's settings immutable during its lifetime.
+Cerv does not reload configuration in place. SIGHUP is not a reload signal; it requests the same graceful shutdown as SIGTERM, unless it was ignored when the process started. Configuration changes use a process restart/rolling deployment. This removes signal/config concurrency and keeps every worker's settings immutable during its lifetime.
 
 ## Startup input bound class
 

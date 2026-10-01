@@ -66,13 +66,14 @@ Signals of interest include at least:
 
 - SIGTERM;
 - SIGINT;
+- SIGHUP;
 - SIGCHLD.
 
 SIGPIPE is ignored globally as described earlier.
 
 ## Graceful shutdown sequence
 
-On SIGTERM/SIGINT:
+On SIGTERM, SIGINT, or SIGHUP:
 
 1.  master marks service draining;
 2.  new admission is stopped;
@@ -84,7 +85,15 @@ On SIGTERM/SIGINT:
 8.  at deadline, remaining workers/connections are terminated according to the hard-stop policy;
 9.  master reaps children and exits with the documented status.
 
-Shutdown is idempotent. The first SIGTERM/SIGINT starts graceful drain and an absolute monotonic deadline. A second SIGTERM/SIGINT sends SIGKILL to all still-live workers immediately. Deadline expiry does the same. A requested shutdown exits status 0 after all children are reaped even when the hard-stop path was required; unexpected/internal failure exits nonzero.
+Shutdown is idempotent. The first SIGTERM/SIGINT/SIGHUP starts graceful drain and an absolute monotonic deadline. A second such signal sends SIGKILL to all still-live workers immediately. Deadline expiry does the same. A requested shutdown exits status 0 after all children are reaped even when the hard-stop path was required; unexpected/internal failure exits nonzero.
+
+## Hangup and ignored hangup
+
+Cerv has no configuration reload, so SIGHUP has no better meaning than the terminal-hangup one: it requests the same graceful shutdown as SIGTERM. Without this the signal's default action would terminate the master abruptly and leave its workers serving. A process started with SIGHUP already ignored (`nohup`, daemon launchers) keeps ignoring it, and workers inherit that disposition, so a service deliberately detached from its terminal survives the terminal closing.
+
+## Workers never outlive the master
+
+Every worker asks the kernel to deliver SIGTERM when its parent dies (`PR_SET_PDEATHSIG`), and verifies after the request that its parent is still the master that forked it, which closes the window where the master dies between `fork()` and the `prctl`. A master that is killed with SIGKILL, or by the OOM killer, therefore cannot leave orphaned workers holding the listening socket. Each worker handles the death signal exactly like a requested shutdown: it stops accepting, lets in-flight responses finish within the existing write and lifetime deadlines, and exits with status 0. The request is made before the seccomp profile is installed.
 
 ## Unexpected worker death
 
