@@ -9,7 +9,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define CERV_ETAG_WIRE_MAX ((size_t)128)
+/* "<size:16>-<mtime_sec:16>-<mtime_nsec:8>[-gz|-br]" including the quotes. */
+#define CERV_ETAG_WIRE_MAX ((size_t)47)
 
 enum cerv_content_encoding {
     CERV_ENCODING_IDENTITY = 0,

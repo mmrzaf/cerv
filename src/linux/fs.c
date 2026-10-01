@@ -18,8 +18,6 @@
 
 #define CERV_OPENAT2_RETRIES 3U
 
-_Static_assert(sizeof(dev_t) <= sizeof(uint64_t), "dev_t must fit the normalized metadata domain");
-_Static_assert(sizeof(ino_t) <= sizeof(uint64_t), "ino_t must fit the normalized metadata domain");
 _Static_assert(sizeof(off_t) <= sizeof(int64_t), "off_t must fit the normalized metadata domain");
 _Static_assert((off_t)-1 < (off_t)0, "Cerv requires signed off_t");
 _Static_assert(sizeof(time_t) <= sizeof(int64_t), "time_t must fit the normalized metadata domain");
@@ -89,19 +87,14 @@ enum cerv_fs_result cerv_fs_classify_errno(int error_number)
 static enum cerv_fs_result cerv_metadata_from_stat(int fd, const struct stat *st, struct cerv_fs_file *out)
 {
     if (!S_ISREG(st->st_mode)) return CERV_FS_NOT_REGULAR;
-    if (st->st_size < (off_t)0 || st->st_mtim.tv_nsec < 0L || st->st_mtim.tv_nsec >= 1000000000L ||
-        st->st_ctim.tv_nsec < 0L || st->st_ctim.tv_nsec >= 1000000000L) {
+    if (st->st_size < (off_t)0 || st->st_mtim.tv_nsec < 0L || st->st_mtim.tv_nsec >= 1000000000L) {
         return CERV_FS_IO;
     }
     *out = (struct cerv_fs_file){
         .fd = fd,
-        .device = (uint64_t)st->st_dev,
-        .inode = (uint64_t)st->st_ino,
         .size = (uint64_t)st->st_size,
         .mtime_sec = (int64_t)st->st_mtim.tv_sec,
-        .mtime_nsec = (uint32_t)st->st_mtim.tv_nsec,
-        .ctime_sec = (int64_t)st->st_ctim.tv_sec,
-        .ctime_nsec = (uint32_t)st->st_ctim.tv_nsec
+        .mtime_nsec = (uint32_t)st->st_mtim.tv_nsec
     };
     return CERV_FS_OK;
 }

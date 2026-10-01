@@ -80,12 +80,12 @@ Cerv SHALL ignore `Range` on HEAD. HTTP defines Range handling for GET; a Range 
 
 ## If-Range
 
-If Cerv supports `If-Range`, it SHALL apply the stricter validator semantics required for range resumption:
+Cerv honors `If-Range` with the stricter validator semantics HTTP requires for range resumption:
 
-- a weak entity-tag MUST NOT be treated as a strong If-Range match;
-- date comparison is used only when the Last-Modified value can serve as a sufficiently strong validator under HTTP rules;
-- when the condition fails or cannot be strongly validated, Cerv sends the full representation rather than a partial response.
+- an entity-tag validator is a match only when it is a **strong** tag byte-for-byte equal to the selected representation's ETag; Cerv's own ETags are strong, so a client resuming a download with the ETag it received gets `206`;
+- a weak tag, a non-matching tag, or a tag for a different content-coding never matches;
+- a date validator never matches: descriptor mtime cannot prove the representation did not change twice within one HTTP-date second, so Cerv does not treat Last-Modified as a strong validator;
+- a malformed `If-Range`, or more than one `If-Range` field, never matches;
+- `If-Range` without `Range` is ignored.
 
-Because the baseline ETag is weak, ETag-form If-Range fails and results in full 200. Cerv also does not claim descriptor mtime is a strong second-granularity validator: it cannot prove the selected representation did not change twice within the same HTTP-date second. Therefore date-form If-Range is conservatively false in the baseline and also results in full 200.
-
-Cerv SHALL parse `If-Range`. When the validator cannot be used as a strong validator under HTTP rules, the Range condition is false and Cerv sends the full selected representation rather than a partial response.
+When the condition does not match, Cerv ignores `Range` and sends the full selected representation with `200`. When it matches, the `Range` is processed normally, including `416` for an unsatisfiable range.

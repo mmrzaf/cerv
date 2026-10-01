@@ -107,8 +107,8 @@ Accept-Encoding tests include:
 
 Tests SHALL cover:
 
-- exact weak ETag match;
-- strong-looking tag vs weak current tag using weak If-None-Match comparison;
+- exact strong ETag match;
+- weak client tag vs strong current tag using weak If-None-Match comparison;
 - non-match;
 - list containing a match;
 - wildcard `*`;
@@ -136,8 +136,9 @@ At minimum:
 - integer overflow;
 - multiple ranges;
 - unknown range unit;
-- Range + If-Range weak ETag;
-- Range + If-Range date;
+- Range + If-Range matching strong ETag (206);
+- Range + If-Range weak, mismatched, malformed, or duplicated ETag (200);
+- Range + If-Range date (200);
 - range over compressed representation;
 - HEAD + Range;
 - zero-byte file.

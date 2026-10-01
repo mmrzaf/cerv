@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
-_Static_assert(CERV_ETAG_WIRE_MAX >= (size_t)122, "ETag buffer must hold the fixed weak metadata validator");
+_Static_assert(CERV_ETAG_WIRE_MAX == (size_t)47, "ETag buffer must hold exactly the fixed strong validator");
 
 struct cerv_candidate {
     enum cerv_content_encoding encoding;
@@ -15,34 +15,48 @@ struct cerv_candidate {
     bool attempted;
 };
 
-static bool cerv_append_hex64(struct cerv_buffer *buf, uint64_t value)
+static bool cerv_append_hex(struct cerv_buffer *buf, uint64_t value, size_t digits)
 {
     static const unsigned char hex[] = "0123456789abcdef";
-    unsigned char digits[16];
+    unsigned char text[16];
     size_t i;
-    for (i = 0U; i < sizeof(digits); ++i) {
-        unsigned shift = (unsigned)((15U - i) * 4U);
-        digits[i] = hex[(value >> shift) & UINT64_C(0xf)];
+    if (digits == 0U || digits > sizeof(text)) return false;
+    for (i = 0U; i < digits; ++i) {
+        unsigned shift = (unsigned)((digits - 1U - i) * 4U);
+        text[i] = hex[(value >> shift) & UINT64_C(0xf)];
     }
-    return cerv_buffer_append(buf, digits, sizeof(digits));
+    return cerv_buffer_append(buf, text, digits);
 }
 
-static bool cerv_build_etag(const struct cerv_fs_file *file, unsigned char out[CERV_ETAG_WIRE_MAX], size_t *out_len)
+static const char *cerv_etag_encoding_suffix(enum cerv_content_encoding encoding)
+{
+    switch (encoding) {
+    case CERV_ENCODING_IDENTITY: return "";
+    case CERV_ENCODING_GZIP: return "-gz";
+    case CERV_ENCODING_BR: return "-br";
+    }
+    return "";
+}
+
+/*
+ * Strong validator built only from properties of the selected representation that are identical on every
+ * replica serving the same tree: byte length, modification time, and content-coding. Device, inode and
+ * ctime are deliberately excluded because they differ per host and per deploy and would defeat revalidation.
+ */
+static bool cerv_build_etag(const struct cerv_fs_file *file, enum cerv_content_encoding encoding,
+                            unsigned char out[CERV_ETAG_WIRE_MAX], size_t *out_len)
 {
     struct cerv_buffer buf;
-    const uint64_t fields[] = {
-        file->device, file->inode, file->size, (uint64_t)file->mtime_sec, (uint64_t)file->mtime_nsec,
-        (uint64_t)file->ctime_sec, (uint64_t)file->ctime_nsec
-    };
-    size_t i;
+    const char *suffix = cerv_etag_encoding_suffix(encoding);
 
     cerv_buffer_init(&buf, out, CERV_ETAG_WIRE_MAX);
-    if (!cerv_buffer_append(&buf, "W/\"", 3U)) return false;
-    for (i = 0U; i < sizeof(fields) / sizeof(fields[0]); ++i) {
-        if (i != 0U && !cerv_buffer_append_byte(&buf, (unsigned char)'-')) return false;
-        if (!cerv_append_hex64(&buf, fields[i])) return false;
-    }
-    if (!cerv_buffer_append_byte(&buf, (unsigned char)'\"')) return false;
+    if (!cerv_buffer_append_byte(&buf, (unsigned char)'\"') || !cerv_append_hex(&buf, file->size, 16U) ||
+        !cerv_buffer_append_byte(&buf, (unsigned char)'-') ||
+        !cerv_append_hex(&buf, (uint64_t)file->mtime_sec, 16U) ||
+        !cerv_buffer_append_byte(&buf, (unsigned char)'-') ||
+        !cerv_append_hex(&buf, (uint64_t)file->mtime_nsec, 8U) ||
+        !cerv_buffer_append(&buf, suffix, strlen(suffix)) ||
+        !cerv_buffer_append_byte(&buf, (unsigned char)'\"')) return false;
     *out_len = buf.used;
     return true;
 }
@@ -156,7 +170,7 @@ enum cerv_representation_result cerv_representation_select(const struct cerv_fs_
             out->file = file;
             out->encoding = candidates[i].encoding;
             out->media_type = cerv_media_type_for_path(logical_path);
-            if (!cerv_build_etag(&out->file, out->etag, &out->etag_len)) {
+            if (!cerv_build_etag(&out->file, out->encoding, out->etag, &out->etag_len)) {
                 cerv_fs_file_close(&out->file);
                 return CERV_REPRESENTATION_IO;
             }

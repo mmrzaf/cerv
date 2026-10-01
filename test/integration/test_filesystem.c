@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/sysmacros.h>
 #include <sys/un.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -136,11 +137,11 @@ static void test_fs_and_representation(const char *root_dir, const char *outside
     CHECK(rep.encoding == CERV_ENCODING_BR);
     CHECK(rep.file.size == UINT64_C(2));
     CHECK(strcmp(rep.media_type, "text/javascript; charset=utf-8") == 0);
-    CHECK(rep.etag_len == 122U && rep.etag[0] == (unsigned char)'W');
+    CHECK(rep.etag_len == CERV_ETAG_WIRE_MAX && rep.etag[0] == (unsigned char)'"');
     {
         struct cerv_entity_tag parsed_tag;
         CHECK(cerv_entity_tag_parse(cerv_representation_etag(&rep), &parsed_tag) == CERV_ETAG_OK);
-        CHECK(parsed_tag.weak);
+        CHECK(!parsed_tag.weak);
     }
     cerv_representation_close(&rep);
 
@@ -473,6 +474,96 @@ static void test_fs_and_representation(const char *root_dir, const char *outside
 }
 
 
+static bool set_mtime(const char *path, int64_t sec, long nsec)
+{
+    struct timespec times[2];
+    times[0].tv_sec = (time_t)sec;
+    times[0].tv_nsec = nsec;
+    times[1] = times[0];
+    return utimensat(AT_FDCWD, path, times, 0) == 0;
+}
+
+static bool select_etag(const struct cerv_fs_root *root, const char *logical, const char *accept,
+                        char out[CERV_ETAG_WIRE_MAX + 1U])
+{
+    struct cerv_path path = logical_path(logical);
+    struct cerv_accept_encoding ae = accept_encoding(accept);
+    struct cerv_representation rep;
+    bool ok = cerv_representation_select(root, &path, &ae, &rep) == CERV_REPRESENTATION_OK;
+    if (ok) {
+        memcpy(out, rep.etag, rep.etag_len);
+        out[rep.etag_len] = '\0';
+        cerv_representation_close(&rep);
+    }
+    return ok;
+}
+
+static void test_etag_wire_format(const char *root_dir)
+{
+    struct cerv_fs_root root = {.fd = -1};
+    char path[1024];
+    char first[CERV_ETAG_WIRE_MAX + 1U];
+    char second[CERV_ETAG_WIRE_MAX + 1U];
+    char before[CERV_ETAG_WIRE_MAX + 1U];
+
+    CHECK(cerv_fs_root_open(root_dir, &root) == CERV_FS_ROOT_OK);
+    CHECK(path_join(path, sizeof(path), root_dir, "etag"));
+    CHECK(mkdir(path, 0755) == 0);
+    CHECK(path_join(path, sizeof(path), root_dir, "etag/a.txt"));
+    CHECK(write_bytes(path, "abcd"));
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456789L));
+    CHECK(path_join(path, sizeof(path), root_dir, "etag/b.txt"));
+    CHECK(write_bytes(path, "wxyz"));
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456789L));
+    CHECK(path_join(path, sizeof(path), root_dir, "etag/a.txt.gz"));
+    CHECK(write_bytes(path, "gz"));
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456789L));
+    CHECK(path_join(path, sizeof(path), root_dir, "etag/a.txt.br"));
+    CHECK(write_bytes(path, "br!"));
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456789L));
+
+    /* Exact wire format: strong, quoted, fixed-width size, mtime seconds, mtime nanoseconds. */
+    CHECK(select_etag(&root, "etag/a.txt", "identity", first));
+    CHECK(strcmp(first, "\"0000000000000004-000000006553f100-075bcd15\"") == 0);
+    CHECK(select_etag(&root, "etag/a.txt", "gzip", second));
+    CHECK(strcmp(second, "\"0000000000000002-000000006553f100-075bcd15-gz\"") == 0);
+    CHECK(select_etag(&root, "etag/a.txt", "br", second));
+    CHECK(strcmp(second, "\"0000000000000003-000000006553f100-075bcd15-br\"") == 0);
+
+    /* Files with identical size and mtime but different inodes share a validator, as replicas must. */
+    CHECK(select_etag(&root, "etag/b.txt", "identity", second));
+    CHECK(strcmp(first, second) == 0);
+
+    /* ctime-only changes (chmod, hard-link count) must not invalidate caches. */
+    CHECK(path_join(path, sizeof(path), root_dir, "etag/a.txt"));
+    CHECK(chmod(path, 0600) == 0);
+    CHECK(chmod(path, 0644) == 0);
+    CHECK(select_etag(&root, "etag/a.txt", "identity", second));
+    CHECK(strcmp(first, second) == 0);
+
+    /* A new mtime, in either component, or a new size changes the validator. */
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456790L));
+    CHECK(select_etag(&root, "etag/a.txt", "identity", second));
+    CHECK(strcmp(first, second) != 0);
+    CHECK(set_mtime(path, INT64_C(1700000001), 123456789L));
+    CHECK(select_etag(&root, "etag/a.txt", "identity", second));
+    CHECK(strcmp(first, second) != 0);
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456789L));
+    CHECK(write_bytes(path, "abcde"));
+    CHECK(set_mtime(path, INT64_C(1700000000), 123456789L));
+    CHECK(select_etag(&root, "etag/a.txt", "identity", second));
+    CHECK(strcmp(first, second) != 0);
+
+    /* Pre-1970 mtimes use the documented modulo-2^64 encoding when the filesystem accepts them. */
+    CHECK(path_join(path, sizeof(path), root_dir, "etag/old.txt"));
+    CHECK(write_bytes(path, "o"));
+    if (set_mtime(path, INT64_C(-1), 0L)) {
+        CHECK(select_etag(&root, "etag/old.txt", "identity", before));
+        CHECK(strcmp(before, "\"0000000000000001-ffffffffffffffff-00000000\"") == 0);
+    }
+    cerv_fs_root_close(&root);
+}
+
 static void test_linux_mount_and_magic_link_policy(void)
 {
     struct cerv_fs_root root = {.fd = -1};
@@ -497,7 +588,7 @@ static void test_linux_mount_and_magic_link_policy(void)
 static struct cerv_representation synthetic_rep(enum cerv_content_encoding encoding, uint64_t size, int64_t mtime)
 {
     struct cerv_representation rep = {0};
-    static const unsigned char tag[] = "W/\"abc\"";
+    static const unsigned char tag[] = "\"abc\"";
     rep.file.fd = 7;
     rep.file.size = size;
     rep.file.mtime_sec = mtime;
@@ -535,7 +626,7 @@ static void test_response_semantics(void)
         "Connection: close\r\n"
         "Content-Type: text/javascript; charset=utf-8\r\n"
         "Vary: Accept-Encoding\r\n"
-        "ETag: W/\"abc\"\r\n"
+        "ETag: \"abc\"\r\n"
         "Last-Modified: Sun, 06 Nov 1994 08:49:37 GMT\r\n"
         "Cache-Control: no-cache\r\n"
         "Accept-Ranges: bytes\r\n"
@@ -554,7 +645,7 @@ static void test_response_semantics(void)
         "Date: Sun, 06 Nov 1994 08:49:37 GMT\r\n"
         "Connection: close\r\n"
         "Vary: Accept-Encoding\r\n"
-        "ETag: W/\"abc\"\r\n"
+        "ETag: \"abc\"\r\n"
         "Last-Modified: Sun, 06 Nov 1994 08:49:37 GMT\r\n"
         "Cache-Control: no-cache\r\n\r\n"));
     CHECK(!headers_contain(&plan, "Content-Length"));
@@ -588,7 +679,7 @@ static void test_response_semantics(void)
         "Connection: close\r\n"
         "Content-Type: text/javascript; charset=utf-8\r\n"
         "Vary: Accept-Encoding\r\n"
-        "ETag: W/\"abc\"\r\n"
+        "ETag: \"abc\"\r\n"
         "Last-Modified: Sun, 06 Nov 1994 08:49:37 GMT\r\n"
         "Cache-Control: no-cache\r\n"
         "Accept-Ranges: bytes\r\n"
@@ -612,17 +703,40 @@ static void test_response_semantics(void)
     CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
     CHECK(plan.status == CERV_STATUS_200);
 
-    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: W/\"abc\"\r\n\r\n", &req) == CERV_PARSE_OK);
-    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
-    CHECK(plan.status == CERV_STATUS_200);
-
+    /* If-Range honors a range only for a strong entity-tag equal to the selected representation's ETag. */
     CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: \"abc\"\r\n\r\n", &req) == CERV_PARSE_OK);
     CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
-    CHECK(plan.status == CERV_STATUS_200);
+    CHECK(plan.status == CERV_STATUS_206 && plan.file_offset == (off_t)2 && plan.file_count == UINT64_C(4));
+    CHECK(headers_contain(&plan, "Content-Range: bytes 2-5/10\r\n"));
+
+    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: W/\"abc\"\r\n\r\n", &req) == CERV_PARSE_OK);
+    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
+    CHECK(plan.status == CERV_STATUS_200 && plan.file_count == UINT64_C(10));
+
+    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: \"other\"\r\n\r\n", &req) == CERV_PARSE_OK);
+    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
+    CHECK(plan.status == CERV_STATUS_200 && plan.file_count == UINT64_C(10));
 
     CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: Sun, 06 Nov 1994 08:49:37 GMT\r\n\r\n", &req) == CERV_PARSE_OK);
     CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
+    CHECK(plan.status == CERV_STATUS_200 && plan.file_count == UINT64_C(10));
+
+    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: garbage\r\n\r\n", &req) == CERV_PARSE_OK);
+    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
     CHECK(plan.status == CERV_STATUS_200);
+
+    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=2-5\r\nIf-Range: \"abc\"\r\nIf-Range: \"abc\"\r\n\r\n", &req) == CERV_PARSE_OK);
+    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
+    CHECK(plan.status == CERV_STATUS_200);
+
+    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nIf-Range: \"abc\"\r\n\r\n", &req) == CERV_PARSE_OK);
+    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
+    CHECK(plan.status == CERV_STATUS_200);
+
+    /* An unsatisfiable range under a matching validator is still 416. */
+    CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\nRange: bytes=10-\r\nIf-Range: \"abc\"\r\n\r\n", &req) == CERV_PARSE_OK);
+    CHECK(cerv_response_plan_resource(&req, CERV_REPRESENTATION_OK, &rep, now, false, &plan));
+    CHECK(plan.status == CERV_STATUS_416);
 
     rep = synthetic_rep(CERV_ENCODING_GZIP, UINT64_C(4), now + INT64_C(100));
     CHECK(parse_request("GET /app.js HTTP/1.1\r\nHost: example\r\n\r\n", &req) == CERV_PARSE_OK);
@@ -764,6 +878,7 @@ int main(void)
     CHECK(outside_dir != NULL);
     if (root_dir != NULL && outside_dir != NULL) {
         test_fs_and_representation(root_dir, outside_dir);
+        test_etag_wire_format(root_dir);
         test_request_to_response_pipeline(root_dir);
     }
     test_linux_mount_and_magic_link_policy();

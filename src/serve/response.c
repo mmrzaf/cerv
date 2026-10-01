@@ -140,25 +140,21 @@ static bool cerv_if_modified_since_304(const struct cerv_http_request *request, 
     return last_modified <= condition.unix_seconds;
 }
 
+/*
+ * If-Range: a range is honored only when the validator is a strong entity-tag that equals the selected
+ * representation's ETag. HTTP-date validators are never accepted: a descriptor mtime cannot prove the bytes did
+ * not change twice within one HTTP-date second, so the full representation is sent instead.
+ */
 static bool cerv_if_range_allows_range(const struct cerv_http_request *request, int current_year,
-                                       const struct cerv_representation *representation,
-                                       bool has_last_modified, int64_t last_modified)
+                                       const struct cerv_representation *representation)
 {
     struct cerv_if_range_value condition;
     struct cerv_entity_tag current;
     struct cerv_span current_wire;
-    enum cerv_if_range_parse_result parsed;
 
-    (void)has_last_modified;
-    (void)last_modified;
     if (request->if_range_count == 0U) return true;
     if (request->if_range_count != 1U) return false;
-    parsed = cerv_http_if_range_parse(request->if_range, current_year, &condition);
-    if (parsed == CERV_IF_RANGE_INVALID) return false;
-    if (parsed == CERV_IF_RANGE_DATE) {
-        /* Descriptor mtimes do not prove that a representation changed at most once within an HTTP-date second. */
-        return false;
-    }
+    if (cerv_http_if_range_parse(request->if_range, current_year, &condition) != CERV_IF_RANGE_ETAG) return false;
     current_wire = cerv_representation_etag(representation);
     if (cerv_entity_tag_parse(current_wire, &current) != CERV_ETAG_OK) return false;
     return cerv_entity_tag_strong_equal(condition.etag, current);
@@ -372,7 +368,7 @@ bool cerv_response_plan_resource_connection(const struct cerv_http_request *requ
     }
 
     if (!head_request && request->range_field_count == 1U && request->range_result == CERV_RANGE_SINGLE &&
-        cerv_if_range_allows_range(request, current_year, representation, has_last_modified, last_modified)) {
+        cerv_if_range_allows_range(request, current_year, representation)) {
         struct cerv_range_selection selection;
         if (cerv_http_range_normalize(request->range, representation->file.size, &selection) == CERV_RANGE_UNSATISFIABLE) {
             bool ok = cerv_plan_416(representation, date, false, close_connection, out);

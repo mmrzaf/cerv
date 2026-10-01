@@ -28,7 +28,7 @@ static void require_terminated(const struct cerv_response_plan *plan)
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    static const unsigned char etag[] = "W/\"fuzz\"";
+    static const unsigned char etag[] = "\"fuzz\"";
     static const enum cerv_http_status errors[] = {
         CERV_STATUS_400, CERV_STATUS_403, CERV_STATUS_404, CERV_STATUS_405, CERV_STATUS_406,
         CERV_STATUS_408, CERV_STATUS_414, CERV_STATUS_417, CERV_STATUS_431,

@@ -144,7 +144,7 @@ This is the sole request-time pathname-to-kernel boundary. It is Linux-specific 
 | `cerv_fs_file_close` | NULL or initialized/closed file | idempotently closes an owned selected-file FD and stores `-1` | consumes owned FD if present |
 | `cerv_fs_classify_errno` | any integer errno value | deterministic filesystem classification independent of HTTP serialization | O(1), no ownership |
 
-Normalized metadata fields (`device`, `inode`, `size`, mtime/ctime seconds and nanoseconds) are captured from the same opened descriptor later used for transfer. The build statically requires signed `off_t`/`time_t` and metadata widths representable by the fixed normalized types.
+Normalized metadata fields (`size`, mtime seconds and nanoseconds) are captured from the same opened descriptor later used for transfer. The build statically requires signed `off_t`/`time_t` and metadata widths representable by the fixed normalized types.
 
 ## `serve/media_type.h`
 
@@ -164,7 +164,7 @@ Normalized metadata fields (`device`, `inode`, `size`, mtime/ctime seconds and n
 | `cerv_representation_etag` | NULL or initialized representation | borrowed view of the bounded generated ETag; NULL yields empty span | O(1), no ownership transfer |
 | `cerv_content_encoding_name` | encoding enum | static `gzip`/`br` literal or NULL for identity/unknown | O(1) |
 
-The baseline ETag wire format is a weak 122-byte metadata validator containing seven fixed-width lowercase 16-hex fields: device, inode, size, mtime seconds, mtime nanoseconds, ctime seconds, and ctime nanoseconds. Signed seconds are serialized by their defined `uint64_t` modulo conversion. The format is ASCII-only, fixed-width, architecture-independent over the normalized metadata domain, and representation-specific.
+The ETag wire format is a strong, quoted validator of at most 47 bytes: the size as 16 lowercase hex digits, `-`, mtime seconds as 16 hex digits, `-`, mtime nanoseconds as 8 hex digits, then `-gz` or `-br` for sidecar encodings and nothing for identity. Signed seconds are serialized by their defined `uint64_t` modulo conversion. The format is ASCII-only, fixed-width per field, architecture-independent over the normalized metadata domain, representation-specific, and independent of device, inode, and ctime so that every replica serving the same tree emits the same validator.
 
 ## `serve/response.h`
 
@@ -178,7 +178,7 @@ Response planning is pure with respect to networking: it performs no socket or f
 
 Cerv emits `HTTP/1.1` response status lines for accepted HTTP/1.0 and HTTP/1.1 requests. All current responses use close-delimited connection lifetime plus exact Content-Length where content exists and never use transfer coding, so the wire form remains interpretable by HTTP/1.0 recipients. This policy is frozen and tested.
 
-Last-Modified is derived from the selected descriptor mtime at second precision and clamps future mtimes to the response Date. The baseline weak ETag cannot satisfy strong If-Range entity-tag comparison. Date-form If-Range is also conservatively false because Cerv's metadata model does not establish the HTTP strong-validator requirement that the representation could not have changed twice within the represented second.
+Last-Modified is derived from the selected descriptor mtime at second precision and clamps future mtimes to the response Date. `If-Range` honors a range only for a strong entity-tag equal to the selected representation's ETag. Date-form `If-Range` is always false because Cerv's metadata model does not establish the HTTP strong-validator requirement that the representation could not have changed twice within the represented second.
 
 ## `runtime/timer.h`
 

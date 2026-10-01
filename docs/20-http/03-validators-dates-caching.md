@@ -37,25 +37,21 @@ Rules:
 
 ## ETag strength
 
-Cerv needs deterministic validators without hashing an entire file on every request.
+Cerv needs deterministic validators without hashing an entire file on every request, and the validator must be identical on every replica that serves the same tree. Cerv therefore emits a **strong ETag** derived only from properties of the selected representation that do not depend on the host:
 
-The baseline is a **weak ETag** derived from the selected descriptor metadata. The frozen fields are:
+- the selected representation's byte length;
+- its modification time with nanosecond precision;
+- its content-coding.
 
-- device ID;
-- inode number;
-- file size;
-- mtime with nanosecond precision where available;
-- ctime/version-related metadata where available and useful.
+The wire encoding is frozen as `"` followed by the byte length as 16 lowercase zero-padded hex digits, `-`, the mtime seconds as 16 hex digits, `-`, the mtime nanoseconds as 8 hex digits, an optional content-coding suffix, and a closing `"`. The suffix is empty for identity, `-gz` for gzip, and `-br` for Brotli, so representations with different codings never share a validator even if their size and mtime coincide. Signed seconds use their defined modulo-`2^64` conversion before hexadecimal formatting. For example, a 4-byte identity file modified at 1700000000.123456789 has the ETag `"0000000000000004-000000006553f100-075bcd15"`.
 
-The wire encoding is frozen as `W/"` followed by seven lowercase, zero-padded, 16-hex-digit fields separated by `-`, then `"`. In order, the fields are device, inode, size, mtime seconds, mtime nanoseconds, ctime seconds, and ctime nanoseconds. Signed seconds use their defined modulo-`2^64` conversion before hexadecimal formatting.
+Device number, inode number, and ctime are deliberately **not** part of the validator. They differ between hosts, between container layers, and after every deploy or `chmod`, so including them would make revalidation fail whenever a load balancer switches replicas and would disclose filesystem internals to clients.
 
-It is deliberately marked weak because metadata identity is not a cryptographic proof of byte-for-byte representation identity across every filesystem/update pattern. The resulting validator is bounded, ASCII-only, fixed-width, deterministic, architecture-independent over Cerv's normalized metadata domain, and covered by overflow/serialization tests.
+Marking the validator strong is a deliberate operator contract: **a changed file must have a changed size or modification time.** Deployments that publish immutable release directories or replace files atomically (write a new file, then rename) satisfy this by construction. A same-size in-place rewrite that also preserves the modification time to the filesystem's timestamp granularity cannot be detected and is outside the contract. Strength is what allows `If-Range` resumption to work.
 
 ## Why not hash each request
 
 Hashing every file before serving would make validator generation O(file_size) and can double filesystem work for large cold files. It also destroys the desired fast path.
-
-Cerv MAY later support deployment-supplied strong validators, but the baseline does not create an unbounded per-request hashing task.
 
 ## If-None-Match
 
@@ -65,7 +61,7 @@ Cerv MUST handle:
 
 - a comma-separated list of entity tags;
 - wildcard `*`;
-- weak tags;
+- weak tags supplied by clients or intermediaries;
 - optional whitespace;
 - malformed syntax according to the chosen conditional-field policy.
 

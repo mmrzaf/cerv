@@ -29,13 +29,9 @@ enum cerv_fs_result {
 
 struct cerv_fs_file {
     int fd;
-    uint64_t device;
-    uint64_t inode;
     uint64_t size;
     int64_t mtime_sec;
     uint32_t mtime_nsec;
-    int64_t ctime_sec;
-    uint32_t ctime_nsec;
 };
 
 enum cerv_fs_root_result cerv_fs_root_open(const char *path, struct cerv_fs_root *out);
