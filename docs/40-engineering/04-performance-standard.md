@@ -26,6 +26,10 @@ Every optimization should compare:
 
 A mature static server such as Nginx MAY be included as an external control to calibrate expectations. Comparative benchmarks SHALL use equivalent workloads and deployment topology.
 
+## Packet efficiency
+
+Cerv sets `TCP_NODELAY` on the listener, so a header block written on its own leaves immediately as a separate TCP segment before the body. For small files, the dominant static workload, that doubles the packets and receiver wakeups per response. Cerv therefore sends every header block with `MSG_MORE` whenever content follows it in the same dispatch (an error body, or file bytes via `sendfile()` or the fallback), so headers and the first content share a segment. The last write of a response is never marked `MSG_MORE` and flushes everything, and responses with no content (304, HEAD) are sent immediately. `bench/tcp_segments.py` measures system-wide TCP segments per keep-alive response; on a quiet loopback it showed 4.13 segments before this behavior and 2.14 after for a 600-byte file.
+
 ## Workload corpus
 
 At minimum benchmark files of approximately:

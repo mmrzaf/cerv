@@ -287,14 +287,27 @@ static enum cerv_conn_result cerv_conn_finish_response(struct cerv_conn *conn, s
     return CERV_CONN_KEEP;
 }
 
+/* True when response content (an error body or file bytes) still follows the headers. */
+static bool cerv_conn_content_follows_headers(const struct cerv_conn *conn)
+{
+    return (conn->response.send_body && conn->response.body_len != 0U) ||
+           (conn->response.send_file && conn->file_remaining != UINT64_C(0));
+}
+
+/*
+ * `more` marks bytes that the very next send/sendfile continues. With TCP_NODELAY set on the listener, a header
+ * block sent alone leaves as its own segment before the body, doubling packets and wakeups for every small
+ * file. MSG_MORE holds the headers just long enough to share a segment with the content that follows
+ * immediately in the same dispatch; the final write of the response is never marked and flushes everything.
+ */
 static enum cerv_conn_result cerv_conn_send_bytes(struct cerv_conn *conn, const unsigned char *bytes,
-                                                  size_t length, size_t *sent,
+                                                  size_t length, size_t *sent, bool more,
                                                   struct cerv_mono_time now,
                                                   struct cerv_duration write_timeout)
 {
     ssize_t n;
     if (*sent >= length) return CERV_CONN_KEEP;
-    n = send(conn->socket_fd, bytes + *sent, length - *sent, MSG_NOSIGNAL);
+    n = send(conn->socket_fd, bytes + *sent, length - *sent, MSG_NOSIGNAL | (more ? MSG_MORE : 0));
     if (n > 0) {
         *sent += (size_t)n;
         cerv_conn_note_write_progress(conn, now, write_timeout);
@@ -417,7 +430,8 @@ enum cerv_conn_result cerv_conn_on_writable(struct cerv_conn *conn, struct cerv_
             size_t before = conn->header_sent;
             ++operations;
             result = cerv_conn_send_bytes(conn, conn->response.headers, conn->response.header_len,
-                                          &conn->header_sent, now, write_timeout);
+                                          &conn->header_sent, cerv_conn_content_follows_headers(conn),
+                                          now, write_timeout);
             if (result != CERV_CONN_KEEP) return result;
             if (conn->header_sent < conn->response.header_len) {
                 if (conn->header_sent == before) return CERV_CONN_KEEP;
@@ -432,7 +446,7 @@ enum cerv_conn_result cerv_conn_on_writable(struct cerv_conn *conn, struct cerv_
             size_t before = conn->body_sent;
             ++operations;
             result = cerv_conn_send_bytes(conn, conn->response.body, conn->response.body_len,
-                                          &conn->body_sent, now, write_timeout);
+                                          &conn->body_sent, false, now, write_timeout);
             if (result != CERV_CONN_KEEP) return result;
             if (conn->body_sent >= conn->response.body_len) return cerv_conn_finish_response(conn, now, header_timeout);
             if (conn->body_sent == before) return CERV_CONN_KEEP;

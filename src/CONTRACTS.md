@@ -217,7 +217,7 @@ Runtime capacity formulas live with the concrete runtime representations whose s
 
 The connection layer owns one accepted client socket and, after successful response planning transfers it, at most one selected representation FD. It performs bounded nonblocking socket/file transfer syscalls but does not register epoll interest, allocate memory, or own the filesystem root.
 
-`struct cerv_conn` has explicit states: `FREE`, `RECV_HEADERS`, `SEND_HEADERS`, `SEND_BODY`, `SEND_FILE`, and `SEND_FALLBACK`. Close is a direct terminal result; there is no persistent closing state. The fixed request buffer is reused as fallback transfer scratch only after request parsing/planning has finished.
+`struct cerv_conn` has explicit states: `FREE`, `RECV_HEADERS`, `SEND_HEADERS`, `SEND_BODY`, `SEND_FILE`, and `SEND_FALLBACK`. Close is a direct terminal result; there is no persistent closing state. A header block is sent with `MSG_MORE` when content follows it in the same dispatch so it shares a TCP segment with that content; the final write of every response is unmarked. The fixed request buffer is reused as fallback transfer scratch only after request parsing/planning has finished.
 
 | Function | Accepted input | Result / preserved invariant | Ownership / bound |
 | --- | --- | --- | --- |
