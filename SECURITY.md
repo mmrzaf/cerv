@@ -18,4 +18,4 @@ Security fixes should include a regression test and, where applicable, a persist
 
 ## Security model boundaries
 
-The normative security contracts are under `docs/`. Cerv deliberately depends on Linux `openat2()` confinement and mandatory seccomp/no-new-privs hardening. Landlock is defense in depth and is not a substitute for those boundaries.
+The normative security contracts are under `docs/`. Cerv deliberately depends on Linux `openat2()` confinement and mandatory seccomp/no-new-privs hardening. Landlock is defense in depth and is not a substitute for those boundaries; use `--landlock require` to refuse to start on a kernel that cannot provide it. Cerv never serves dotfiles or dot-directories other than `.well-known/`, but secrets should still be kept out of the document root.
