@@ -24,6 +24,7 @@ static const char cerv_help[] =
     "  --max-lifetime DURATION\n"
     "  --shutdown-timeout DURATION\n"
     "  --spa-fallback PATH\n"
+    "  --landlock auto|require\n"
     "  --immutable\n"
     "  --mutable\n"
     "  -h, --help\n"
@@ -32,7 +33,7 @@ static const char cerv_help[] =
     "Environment (CLI overrides environment):\n"
     "  CERV_LISTEN, CERV_WORKERS, CERV_MAX_CONNECTIONS, CERV_ROOT\n"
     "  CERV_HEADER_TIMEOUT, CERV_WRITE_TIMEOUT, CERV_MAX_LIFETIME\n"
-    "  CERV_SHUTDOWN_TIMEOUT, CERV_IMMUTABLE, CERV_SPA_FALLBACK\n";
+    "  CERV_SHUTDOWN_TIMEOUT, CERV_IMMUTABLE, CERV_SPA_FALLBACK, CERV_LANDLOCK\n";
 
 #ifndef CERV_VERSION
 #error "CERV_VERSION must be provided by the build"
@@ -125,6 +126,14 @@ static bool cerv_parse_bool(const char *text, bool *out)
     return false;
 }
 
+static bool cerv_parse_landlock(const char *text, bool *require)
+{
+    if (text == NULL || require == NULL) return false;
+    if (strcmp(text, "auto") == 0) { *require = false; return true; }
+    if (strcmp(text, "require") == 0) { *require = true; return true; }
+    return false;
+}
+
 static bool cerv_segment_dot_or_dotdot(const unsigned char *bytes, size_t len)
 {
     return (len == 1U && bytes[0] == (unsigned char)'.') ||
@@ -179,7 +188,8 @@ void cerv_config_env_read_process(struct cerv_config_env *out)
         .shutdown_timeout = getenv("CERV_SHUTDOWN_TIMEOUT"),
         .root = getenv("CERV_ROOT"),
         .immutable = getenv("CERV_IMMUTABLE"),
-        .spa_fallback = getenv("CERV_SPA_FALLBACK")
+        .spa_fallback = getenv("CERV_SPA_FALLBACK"),
+        .landlock = getenv("CERV_LANDLOCK")
     };
 }
 
@@ -271,6 +281,7 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
     bool seen_shutdown = false;
     bool seen_immutable = false;
     bool seen_spa_fallback = false;
+    bool seen_landlock = false;
     bool workers_auto = true;
     int i;
     if (out == NULL || argc < 1 || argv == NULL) return CERV_CONFIG_ERROR;
@@ -351,6 +362,12 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
                     return CERV_CONFIG_ERROR;
                 }
                 seen_spa_fallback = true;
+            } else if (cerv_option_value(argc, argv, &i, arg, "--landlock", &value)) {
+                if (seen_landlock || !cerv_parse_landlock(value, &out->require_landlock)) {
+                    cerv_config_error(error_buf, error_cap, seen_landlock ? "duplicate --landlock" : "invalid --landlock (expected auto or require)");
+                    return CERV_CONFIG_ERROR;
+                }
+                seen_landlock = true;
             } else {
                 cerv_config_error(error_buf, error_cap, "unknown or incomplete option");
                 return CERV_CONFIG_ERROR;
@@ -409,6 +426,9 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
     if (!seen_spa_fallback && env != NULL && env->spa_fallback != NULL && env->spa_fallback[0] != '\0' &&
         !cerv_parse_spa_fallback(env->spa_fallback, out->spa_fallback, &out->spa_fallback_len)) {
         cerv_config_error(error_buf, error_cap, "invalid CERV_SPA_FALLBACK"); return CERV_CONFIG_ERROR;
+    }
+    if (!seen_landlock && env != NULL && env->landlock != NULL && !cerv_parse_landlock(env->landlock, &out->require_landlock)) {
+        cerv_config_error(error_buf, error_cap, "invalid CERV_LANDLOCK (expected auto or require)"); return CERV_CONFIG_ERROR;
     }
     if (out->root_path == NULL && env != NULL && env->root != NULL) {
         if (env->root[0] == '\0') { cerv_config_error(error_buf, error_cap, "invalid CERV_ROOT"); return CERV_CONFIG_ERROR; }

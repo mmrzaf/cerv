@@ -20,5 +20,7 @@ bool cerv_sandbox_landlock_read_root(const struct cerv_fs_root *root, enum cerv_
 bool cerv_sandbox_seccomp_install(enum cerv_seccomp_profile profile);
 bool cerv_sandbox_worker_enter(const struct cerv_fs_root *root, enum cerv_landlock_status *landlock_status);
 bool cerv_sandbox_master_enter(void);
+/* A worker may start serving unless Landlock was required and the kernel did not provide it. */
+bool cerv_sandbox_landlock_satisfies(bool required, enum cerv_landlock_status status);
 
 #endif

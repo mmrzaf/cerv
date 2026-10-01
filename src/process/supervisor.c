@@ -279,6 +279,8 @@ static int cerv_worker_child(size_t worker_index, size_t slots_count, int listen
        into a spurious EAGAIN failure before the master begins draining it. */
     if (!cerv_fd_make_blocking(startup_write_fd)) goto done;
     if (!cerv_sandbox_worker_enter(root, &landlock_status)) goto done;
+    /* --landlock require: a worker without Landlock never reports ready and never serves. */
+    if (!cerv_sandbox_landlock_satisfies(config->require_landlock, landlock_status)) goto done;
     if (!cerv_write_start_record(startup_write_fd, worker_index, landlock_status)) goto done;
     if (close(startup_write_fd) != 0) goto done;
     startup_write_fd = -1;
@@ -548,7 +550,8 @@ int cerv_supervisor_run(const struct cerv_config *config)
         cerv_diag_message("error", "startup", "master_seccomp");
         goto startup_fail;
     }
-    cerv_diag_message("info", "sandbox", landlock_all ? "seccomp=on landlock=on" : "seccomp=on landlock=unavailable");
+    if (landlock_all) cerv_diag_message("info", "sandbox", "seccomp=on landlock=on");
+    else cerv_diag_message("warn", "sandbox", "seccomp=on landlock=unavailable hint=use_landlock_require_to_enforce");
     cerv_diag_message("info", "ready", "workers_started");
     while (cerv_alive_count(alive, run_config->workers) != 0U) {
         struct pollfd pfd = {.fd = signal_fd, .events = POLLIN, .revents = 0};
@@ -624,7 +627,9 @@ int cerv_supervisor_run(const struct cerv_config *config)
     }
     goto done;
 startup_fail:
-    cerv_diag_message("error", "startup", "worker_creation_or_readiness");
+    cerv_diag_message("error", "startup", run_config->require_landlock ?
+        "worker_creation_or_readiness landlock=required" :
+        "worker_creation_or_readiness");
     fatal = true;
     cerv_force_reap_workers(pids, alive, created, &fatal);
 done:

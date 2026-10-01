@@ -98,6 +98,45 @@ def main() -> int:
                 proc.kill()
                 proc.wait()
 
+        # --landlock require: serve when the kernel provides Landlock, otherwise refuse to start.
+        landlock_on = "landlock=on" in stderr
+        port = free_port()
+        env.update(CERV_LISTEN=f"127.0.0.1:{port}", CERV_MAX_CONNECTIONS="auto", CERV_LANDLOCK="require")
+        required = subprocess.Popen(
+            [cerv],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            if landlock_on:
+                answer = b""
+                for _ in range(100):
+                    if required.poll() is not None:
+                        break
+                    try:
+                        answer = request(port, "/hello-required")
+                        break
+                    except OSError:
+                        time.sleep(0.02)
+                if b"HTTP/1.1 200 OK\r\n" not in answer:
+                    raise AssertionError("--landlock require did not serve on a Landlock-capable kernel")
+                required.terminate()
+                if required.wait(timeout=5) != 0:
+                    raise AssertionError("--landlock require Cerv did not shut down cleanly")
+            else:
+                if required.wait(timeout=15) != 1:
+                    raise AssertionError("--landlock require must fail startup when Landlock is unavailable")
+                if "landlock=required" not in (required.stderr.read() if required.stderr else ""):
+                    raise AssertionError("missing Landlock requirement diagnostic")
+        finally:
+            if required.poll() is None:
+                required.kill()
+                required.wait()
+        env.pop("CERV_LANDLOCK")
+
         # Numeric capacity is an explicit hard request and must not silently shrink.
         port = free_port()
         env.update(CERV_LISTEN=f"127.0.0.1:{port}", CERV_MAX_CONNECTIONS="4096")
@@ -116,7 +155,7 @@ def main() -> int:
             raise AssertionError(f"explicit impossible connection cap returned {failed.returncode}")
         if "required_worker_fds=8208" not in failed.stderr or "nofile_soft=1024" not in failed.stderr:
             raise AssertionError(f"resource diagnostic missing FD math: {failed.stderr!r}")
-    print("env runtime integration: auto capacity + SPA + dotfile policy + strict numeric cap passed")
+    print("env runtime integration: auto capacity + SPA + dotfile policy + landlock option + strict numeric cap passed")
     return 0
 
 

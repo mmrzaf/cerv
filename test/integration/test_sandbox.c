@@ -133,6 +133,15 @@ static void test_landlock(const char *root_path)
 
 #endif
 
+static void test_landlock_requirement(void)
+{
+    /* Not required: an unavailable Landlock never blocks serving. Required: only an enabled ruleset suffices. */
+    CHECK(cerv_sandbox_landlock_satisfies(false, CERV_LANDLOCK_ENABLED));
+    CHECK(cerv_sandbox_landlock_satisfies(false, CERV_LANDLOCK_UNAVAILABLE));
+    CHECK(cerv_sandbox_landlock_satisfies(true, CERV_LANDLOCK_ENABLED));
+    CHECK(!cerv_sandbox_landlock_satisfies(true, CERV_LANDLOCK_UNAVAILABLE));
+}
+
 static void fill_nonblocking_fd(int fd)
 {
     unsigned char bytes[1024];
@@ -291,6 +300,7 @@ int main(void)
     CHECK(snprintf(file_path, sizeof(file_path), "%s/file.txt", dir) > 0);
     CHECK(write_file(file_path, "sandbox\n"));
     cerv_diag_prepare();
+    test_landlock_requirement();
 #ifndef CERV_INSTRUMENTED_BUILD
     test_worker_seccomp_allowed(dir);
     test_worker_seccomp_forbidden(dir);

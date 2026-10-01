@@ -15,7 +15,7 @@ Current product version: **1.0.0**.
 - Bounded sequential HTTP/1.1 connection reuse: at most 64 successful requests per socket, with no request-body support or pipelining contract.
 - `sendfile()` fast path with a bounded `pread()+send()` fallback.
 - Absolute header/lifetime/shutdown deadlines plus write no-progress deadlines.
-- Mandatory worker/master `no_new_privs` + seccomp; Landlock is optional defense in depth when the running kernel provides it.
+- Mandatory worker/master `no_new_privs` + seccomp; Landlock is defense in depth when the running kernel provides it, and mandatory with `--landlock require`.
 - Native environment-variable configuration with command-line override semantics.
 - FD-aware automatic connection sizing.
 - Optional `--spa-fallback` / `CERV_SPA_FALLBACK` for client-side-routed static applications.
@@ -79,6 +79,7 @@ Usage: cerv [OPTIONS] [ROOT]
 --max-lifetime DURATION
 --shutdown-timeout DURATION
 --spa-fallback PATH
+--landlock auto|require
 --immutable
 --mutable
 -h, --help
@@ -97,6 +98,7 @@ Environment mirrors use the `CERV_` prefix:
 - `CERV_SHUTDOWN_TIMEOUT`
 - `CERV_IMMUTABLE`
 - `CERV_SPA_FALLBACK`
+- `CERV_LANDLOCK`
 
 Addresses are numeric IPv4 or bracketed IPv6. Durations accept positive `ms`, `s`, or `m` values. `--immutable` is an operator assertion; `--mutable` explicitly overrides an immutable environment setting.
 

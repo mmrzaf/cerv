@@ -180,6 +180,50 @@ static void test_spa_fallback_cli(void)
     CHECK(parse_values(dot_segment, sizeof(dot_segment) / sizeof(dot_segment[0]), &config) == CERV_CONFIG_ERROR);
 }
 
+static void test_landlock_option(void)
+{
+    struct cerv_config config;
+    struct cerv_config_env env = {.landlock = "require"};
+    struct argv_fixture fixture;
+    char error[128] = {0};
+    const char *base[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "/tmp"};
+    const char *require[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "--landlock", "require", "/tmp"};
+    const char *require_eq[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "--landlock=require", "/tmp"};
+    const char *automatic[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "--landlock=auto", "/tmp"};
+    const char *bogus[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "--landlock", "yes", "/tmp"};
+    const char *duplicate[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "--landlock=auto", "--landlock=require", "/tmp"};
+    const char *empty[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "1", "--landlock=", "/tmp"};
+
+    /* Default is auto: Landlock is used when the kernel offers it and never required. */
+    CHECK(parse_values(base, sizeof(base) / sizeof(base[0]), &config) == CERV_CONFIG_OK && !config.require_landlock);
+    CHECK(parse_values(require, sizeof(require) / sizeof(require[0]), &config) == CERV_CONFIG_OK && config.require_landlock);
+    CHECK(parse_values(require_eq, sizeof(require_eq) / sizeof(require_eq[0]), &config) == CERV_CONFIG_OK && config.require_landlock);
+    CHECK(parse_values(automatic, sizeof(automatic) / sizeof(automatic[0]), &config) == CERV_CONFIG_OK && !config.require_landlock);
+    CHECK(parse_values(bogus, sizeof(bogus) / sizeof(bogus[0]), &config) == CERV_CONFIG_ERROR);
+    CHECK(parse_values(duplicate, sizeof(duplicate) / sizeof(duplicate[0]), &config) == CERV_CONFIG_ERROR);
+    CHECK(parse_values(empty, sizeof(empty) / sizeof(empty[0]), &config) == CERV_CONFIG_ERROR);
+
+    /* defaults < environment < command line */
+    CHECK(make_args(&fixture, base, sizeof(base) / sizeof(base[0])));
+    CHECK(cerv_config_parse_with_env(fixture.argc, fixture.argv, &env, &config, error, sizeof(error)) == CERV_CONFIG_OK);
+    CHECK(config.require_landlock);
+    CHECK(make_args(&fixture, automatic, sizeof(automatic) / sizeof(automatic[0])));
+    CHECK(cerv_config_parse_with_env(fixture.argc, fixture.argv, &env, &config, error, sizeof(error)) == CERV_CONFIG_OK);
+    CHECK(!config.require_landlock);
+    env.landlock = "auto";
+    CHECK(make_args(&fixture, require, sizeof(require) / sizeof(require[0])));
+    CHECK(cerv_config_parse_with_env(fixture.argc, fixture.argv, &env, &config, error, sizeof(error)) == CERV_CONFIG_OK);
+    CHECK(config.require_landlock);
+    env.landlock = "maybe";
+    CHECK(make_args(&fixture, base, sizeof(base) / sizeof(base[0])));
+    CHECK(cerv_config_parse_with_env(fixture.argc, fixture.argv, &env, &config, error, sizeof(error)) == CERV_CONFIG_ERROR);
+    CHECK(strstr(error, "CERV_LANDLOCK") != NULL);
+    /* An invalid environment value is ignored only when the command line overrides it. */
+    CHECK(make_args(&fixture, automatic, sizeof(automatic) / sizeof(automatic[0])));
+    CHECK(cerv_config_parse_with_env(fixture.argc, fixture.argv, &env, &config, error, sizeof(error)) == CERV_CONFIG_OK);
+    CHECK(strstr(cerv_config_help_text(), "--landlock") != NULL && strstr(cerv_config_help_text(), "CERV_LANDLOCK") != NULL);
+}
+
 static void test_environment_config(void)
 {
     struct cerv_config config;
@@ -343,6 +387,7 @@ int main(void)
     test_partitions_and_budgets();
     test_cli();
     test_spa_fallback_cli();
+    test_landlock_option();
     test_environment_config();
     test_resource_limit();
     test_diag_drop_when_stderr_full();

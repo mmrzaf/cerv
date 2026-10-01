@@ -36,6 +36,7 @@ cerv [OPTIONS] [ROOT]
 --max-lifetime DURATION
 --shutdown-timeout DURATION
 --spa-fallback PATH
+--landlock auto|require
 --immutable
 --mutable
 -h, --help
@@ -57,6 +58,7 @@ CERV_SHUTDOWN_TIMEOUT
 CERV_ROOT
 CERV_IMMUTABLE
 CERV_SPA_FALLBACK
+CERV_LANDLOCK
 ```
 
 `CERV_IMMUTABLE` accepts `1/0`, `true/false`, `yes/no`, or `on/off` case-insensitively. An empty `CERV_SPA_FALLBACK` disables fallback; other present values must be valid root-relative fallback paths.
@@ -132,6 +134,15 @@ Fallback occurs only when the originally requested representation resolves to `C
 The fallback is selected through the ordinary representation negotiator, so precompressed `.br`/`.gz` sidecars, validators, ranges, MIME type, HEAD semantics, and cache policy all apply to the fallback file exactly as they do to an ordinary request.
 
 This feature is deliberately narrower than application routing: there is one configured static fallback and no route table, rewrite language, regex, or request-body semantics.
+
+## Landlock policy
+
+`--landlock auto|require` / `CERV_LANDLOCK=auto|require` selects what happens when the running kernel cannot provide Landlock (kernel older than 5.13, Landlock absent from the active LSM list, or a container policy that blocks the syscall).
+
+- `auto` is the default. Workers use Landlock when available, report `landlock=unavailable` in the startup `sandbox` diagnostic at `warn` level when it is not, and serve anyway. Mandatory `openat2()` confinement, `no_new_privs`, and seccomp are unaffected.
+- `require` makes Landlock part of the security contract for this deployment. A worker that cannot establish its read-only-root ruleset exits before reporting ready, so the service fails startup with a diagnostic naming the requirement instead of serving with one fewer containment layer. A Landlock setup error on a kernel that does report support is fatal in both modes.
+
+Operators who control their kernels should prefer `require`: without Landlock, a compromised worker is limited only by seccomp, whose filter cannot constrain the path argument of `openat2()`.
 
 ## Cache-policy override
 

@@ -156,6 +156,11 @@ bool cerv_sandbox_worker_enter(const struct cerv_fs_root *root, enum cerv_landlo
 #endif
 }
 
+bool cerv_sandbox_landlock_satisfies(bool required, enum cerv_landlock_status status)
+{
+    return !required || status == CERV_LANDLOCK_ENABLED;
+}
+
 bool cerv_sandbox_master_enter(void)
 {
     if (!cerv_sandbox_no_new_privs()) return false;

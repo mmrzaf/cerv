@@ -23,6 +23,7 @@ struct cerv_config {
     unsigned char spa_fallback[CERV_PATH_BYTES_MAX];
     size_t spa_fallback_len;
     bool immutable;
+    bool require_landlock;
 };
 
 struct cerv_config_env {
@@ -36,6 +37,7 @@ struct cerv_config_env {
     const char *root;
     const char *immutable;
     const char *spa_fallback;
+    const char *landlock;
 };
 
 enum cerv_config_result {

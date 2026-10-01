@@ -60,7 +60,7 @@ However:
 - rules must account for descriptors opened before restrictions and exact kernel Landlock ABI support;
 - availability/configuration differs by kernel.
 
-If enabled, lack of Landlock MAY be either fatal or optional depending on the declared release security profile. That choice must be explicit.
+Whether lack of Landlock is fatal is an explicit operator choice: `--landlock auto` (default) serves without it and reports `landlock=unavailable` at `warn` level, while `--landlock require` refuses to start.
 
 ## Namespaces and read-only root
 
@@ -95,6 +95,6 @@ These are defense in depth and do not replace C-level correctness.
 
 The release architecture enables `PR_SET_NO_NEW_PRIVS` in both worker and master before their steady-state seccomp profiles are installed. Failure to establish `no_new_privs` or the applicable seccomp filter is a startup/runtime-fatal condition; Cerv does not continue with a broader syscall surface. The BPF default action is process kill and the filter checks the Linux audit architecture before syscall-number matching.
 
-Workers additionally attempt Landlock after opening/inheriting the document-root FD and before reporting ready. Cerv discovers the running Landlock ABI at runtime, creates a ruleset handling all filesystem rights known to the build headers for that ABI, and grants only read-file/read-directory beneath the document root. Landlock is an **optional defense-in-depth layer** in the baseline profile: an unavailable Landlock syscall is reported as `landlock=unavailable` and does not weaken or replace mandatory `openat2()` `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS` confinement. For the ABI probe, `ENOSYS`, `EOPNOTSUPP`, and `EPERM` are explicit unavailability classes; `EPERM` permits operation inside an outer container policy that blocks the optional Landlock syscall. A Landlock setup error after a supported ABI has been established is fatal.
+Workers additionally attempt Landlock after opening/inheriting the document-root FD and before reporting ready. Cerv discovers the running Landlock ABI at runtime, creates a ruleset handling all filesystem rights known to the build headers for that ABI, and grants only read-file/read-directory beneath the document root. Landlock is an **optional defense-in-depth layer** by default and a **required** one under `--landlock require`: an unavailable Landlock syscall is reported as `landlock=unavailable` (and, when required, prevents the worker from becoming ready) and does not weaken or replace mandatory `openat2()` `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS` confinement. For the ABI probe, `ENOSYS`, `EOPNOTSUPP`, and `EPERM` are explicit unavailability classes; `EPERM` permits operation inside an outer container policy that blocks the optional Landlock syscall. A Landlock setup error after a supported ABI has been established is fatal.
 
 Instrumented sanitizer/coverage builds intentionally do not install seccomp/Landlock in the process under test because the instrumentation runtimes execute syscalls unrelated to Cerv. The ordinary dual-compiler integration suite and release syscall-audit gate execute the real sandbox and include a forbidden-syscall `SIGSYS` regression. This instrumentation exception SHALL NOT be enabled in release builds.
