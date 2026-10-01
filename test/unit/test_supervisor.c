@@ -180,6 +180,39 @@ static void test_spa_fallback_cli(void)
     CHECK(parse_values(dot_segment, sizeof(dot_segment) / sizeof(dot_segment[0]), &config) == CERV_CONFIG_ERROR);
 }
 
+static bool parse_error_contains(const char *const values[], size_t count, const char *needle)
+{
+    struct argv_fixture fixture;
+    struct cerv_config config;
+    char error[192] = {0};
+    if (!make_args(&fixture, values, count)) return false;
+    if (cerv_config_parse(fixture.argc, fixture.argv, &config, error, sizeof(error)) != CERV_CONFIG_ERROR) return false;
+    return strstr(error, needle) != NULL;
+}
+
+static void test_config_error_messages(void)
+{
+    const char *bad_listen[] = {"cerv", "--listen", "localhost:80", "/tmp"};
+    const char *bad_workers[] = {"cerv", "--listen", "127.0.0.1:1", "--workers", "0", "/tmp"};
+    const char *bad_duration[] = {"cerv", "--listen", "127.0.0.1:1", "--header-timeout", "5", "/tmp"};
+    const char *bad_spa[] = {"cerv", "--listen", "127.0.0.1:1", "--spa-fallback", "../x", "/tmp"};
+    const char *unknown[] = {"cerv", "--listen", "127.0.0.1:1", "--frobnicate", "/tmp"};
+    const char *missing_value[] = {"cerv", "/tmp", "--listen"};
+    const char *both_cache[] = {"cerv", "--listen", "127.0.0.1:1", "--immutable", "--mutable", "/tmp"};
+    const char *no_root[] = {"cerv", "--listen", "127.0.0.1:1"};
+    const char *two_roots[] = {"cerv", "--listen", "127.0.0.1:1", "/a", "/b"};
+    /* Every rejection names the offending option and says what would have been accepted. */
+    CHECK(parse_error_contains(bad_listen, sizeof(bad_listen) / sizeof(bad_listen[0]), "invalid --listen (expected IPV4:PORT or [IPV6]:PORT"));
+    CHECK(parse_error_contains(bad_workers, sizeof(bad_workers) / sizeof(bad_workers[0]), "invalid --workers (expected a positive integer up to 1024, or auto)"));
+    CHECK(parse_error_contains(bad_duration, sizeof(bad_duration) / sizeof(bad_duration[0]), "ms, s, or m suffix"));
+    CHECK(parse_error_contains(bad_spa, sizeof(bad_spa) / sizeof(bad_spa[0]), "invalid --spa-fallback (expected a root-relative file path"));
+    CHECK(parse_error_contains(unknown, sizeof(unknown) / sizeof(unknown[0]), "unknown option, or option missing its value: --frobnicate"));
+    CHECK(parse_error_contains(missing_value, sizeof(missing_value) / sizeof(missing_value[0]), ": --listen"));
+    CHECK(parse_error_contains(both_cache, sizeof(both_cache) / sizeof(both_cache[0]), "--immutable and --mutable cannot be combined"));
+    CHECK(parse_error_contains(no_root, sizeof(no_root) / sizeof(no_root[0]), "ROOT or CERV_ROOT is required"));
+    CHECK(parse_error_contains(two_roots, sizeof(two_roots) / sizeof(two_roots[0]), "multiple ROOT arguments"));
+}
+
 static void test_landlock_option(void)
 {
     struct cerv_config config;
@@ -388,6 +421,7 @@ int main(void)
     test_cli();
     test_spa_fallback_cli();
     test_landlock_option();
+    test_config_error_messages();
     test_environment_config();
     test_resource_limit();
     test_diag_drop_when_stderr_full();

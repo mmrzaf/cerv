@@ -150,6 +150,10 @@ Mutable/conservative cache behavior is the default. `--immutable` or a true `CER
 
 Do not enable immutable mode merely because an application uses hashed assets if `index.html` or other deployment entrypoints are expected to change in place under the same URL.
 
+## Diagnostics
+
+Every configuration rejection is one `level=error event=config` line that names the offending option or variable and states what would have been accepted, for example `invalid --listen (expected IPV4:PORT or [IPV6]:PORT with a numeric address and port 1-65535; hostnames are not accepted)`. An unknown option, or one missing its value, is reported with the option as typed. The process exits with status 2 and never starts a worker.
+
 ## Unknown arguments and invalid environment
 
 Unknown CLI options are fatal configuration errors and exit with code 2. Cerv never silently ignores a misspelled flag.

@@ -44,10 +44,24 @@ static const char cerv_version[] = "cerv " CERV_VERSION "\n";
 const char *cerv_config_help_text(void) { return cerv_help; }
 const char *cerv_version_text(void) { return cerv_version; }
 
+#define CERV_HINT_LISTEN " (expected IPV4:PORT or [IPV6]:PORT with a numeric address and port 1-65535; hostnames are not accepted)"
+#define CERV_HINT_WORKERS " (expected a positive integer up to 1024, or auto)"
+#define CERV_HINT_CONNECTIONS " (expected a positive integer below 4294967295, or auto)"
+#define CERV_HINT_DURATION " (expected a positive integer with a ms, s, or m suffix, such as 500ms, 5s, or 2m)"
+#define CERV_HINT_SPA_FALLBACK " (expected a root-relative file path without empty, '.', '..', or dot-prefixed segments)"
+#define CERV_HINT_BOOL " (expected 1, 0, true, false, yes, no, on, or off)"
+#define CERV_HINT_LANDLOCK " (expected auto or require)"
+
 static void cerv_config_error(char *buf, size_t cap, const char *message)
 {
     if (buf == NULL || cap == 0U) return;
     (void)snprintf(buf, cap, "%s", message);
+}
+
+static void cerv_config_error_arg(char *buf, size_t cap, const char *message, const char *arg)
+{
+    if (buf == NULL || cap == 0U) return;
+    (void)snprintf(buf, cap, "%s: %.64s", message, arg == NULL ? "" : arg);
 }
 
 static bool cerv_parse_u64_text(const char *text, uint64_t *out)
@@ -304,7 +318,7 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
             continue;
         }
         if (strcmp(arg, "--mutable") == 0) {
-            if (seen_immutable) { cerv_config_error(error_buf, error_cap, "duplicate cache policy"); return CERV_CONFIG_ERROR; }
+            if (seen_immutable) { cerv_config_error(error_buf, error_cap, "--immutable and --mutable cannot be combined"); return CERV_CONFIG_ERROR; }
             seen_immutable = true;
             out->immutable = false;
             continue;
@@ -312,7 +326,7 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
         if (arg[0] == '-') {
             if (cerv_option_value(argc, argv, &i, arg, "--listen", &value)) {
                 if (seen_listen || !cerv_parse_listen(value, &out->listen_addr, &out->listen_addr_len)) {
-                    cerv_config_error(error_buf, error_cap, seen_listen ? "duplicate --listen" : "invalid --listen");
+                    cerv_config_error(error_buf, error_cap, seen_listen ? "duplicate --listen" : "invalid --listen" CERV_HINT_LISTEN);
                     return CERV_CONFIG_ERROR;
                 }
                 seen_listen = true;
@@ -323,7 +337,7 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
                 else {
                     workers_auto = false;
                     if (!cerv_parse_size_positive(value, &out->workers) || out->workers > CERV_WORKERS_MAX) {
-                        cerv_config_error(error_buf, error_cap, "invalid --workers"); return CERV_CONFIG_ERROR;
+                        cerv_config_error(error_buf, error_cap, "invalid --workers" CERV_HINT_WORKERS); return CERV_CONFIG_ERROR;
                     }
                 }
             } else if (cerv_option_value(argc, argv, &i, arg, "--max-connections", &value)) {
@@ -333,55 +347,55 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
                 else {
                     out->max_connections_auto = false;
                     if (!cerv_parse_size_positive(value, &out->max_connections) || out->max_connections >= (size_t)UINT32_MAX) {
-                        cerv_config_error(error_buf, error_cap, "invalid --max-connections"); return CERV_CONFIG_ERROR;
+                        cerv_config_error(error_buf, error_cap, "invalid --max-connections" CERV_HINT_CONNECTIONS); return CERV_CONFIG_ERROR;
                     }
                 }
             } else if (cerv_option_value(argc, argv, &i, arg, "--header-timeout", &value)) {
                 if (seen_header || !cerv_parse_duration(value, &out->header_timeout)) {
-                    cerv_config_error(error_buf, error_cap, seen_header ? "duplicate --header-timeout" : "invalid --header-timeout"); return CERV_CONFIG_ERROR;
+                    cerv_config_error(error_buf, error_cap, seen_header ? "duplicate --header-timeout" : "invalid --header-timeout" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
                 }
                 seen_header = true;
             } else if (cerv_option_value(argc, argv, &i, arg, "--write-timeout", &value)) {
                 if (seen_write || !cerv_parse_duration(value, &out->write_timeout)) {
-                    cerv_config_error(error_buf, error_cap, seen_write ? "duplicate --write-timeout" : "invalid --write-timeout"); return CERV_CONFIG_ERROR;
+                    cerv_config_error(error_buf, error_cap, seen_write ? "duplicate --write-timeout" : "invalid --write-timeout" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
                 }
                 seen_write = true;
             } else if (cerv_option_value(argc, argv, &i, arg, "--max-lifetime", &value)) {
                 if (seen_lifetime || !cerv_parse_duration(value, &out->max_lifetime)) {
-                    cerv_config_error(error_buf, error_cap, seen_lifetime ? "duplicate --max-lifetime" : "invalid --max-lifetime"); return CERV_CONFIG_ERROR;
+                    cerv_config_error(error_buf, error_cap, seen_lifetime ? "duplicate --max-lifetime" : "invalid --max-lifetime" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
                 }
                 seen_lifetime = true;
             } else if (cerv_option_value(argc, argv, &i, arg, "--shutdown-timeout", &value)) {
                 if (seen_shutdown || !cerv_parse_duration(value, &out->shutdown_timeout)) {
-                    cerv_config_error(error_buf, error_cap, seen_shutdown ? "duplicate --shutdown-timeout" : "invalid --shutdown-timeout"); return CERV_CONFIG_ERROR;
+                    cerv_config_error(error_buf, error_cap, seen_shutdown ? "duplicate --shutdown-timeout" : "invalid --shutdown-timeout" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
                 }
                 seen_shutdown = true;
             } else if (cerv_option_value(argc, argv, &i, arg, "--spa-fallback", &value)) {
                 if (seen_spa_fallback || !cerv_parse_spa_fallback(value, out->spa_fallback, &out->spa_fallback_len)) {
-                    cerv_config_error(error_buf, error_cap, seen_spa_fallback ? "duplicate --spa-fallback" : "invalid --spa-fallback");
+                    cerv_config_error(error_buf, error_cap, seen_spa_fallback ? "duplicate --spa-fallback" : "invalid --spa-fallback" CERV_HINT_SPA_FALLBACK);
                     return CERV_CONFIG_ERROR;
                 }
                 seen_spa_fallback = true;
             } else if (cerv_option_value(argc, argv, &i, arg, "--landlock", &value)) {
                 if (seen_landlock || !cerv_parse_landlock(value, &out->require_landlock)) {
-                    cerv_config_error(error_buf, error_cap, seen_landlock ? "duplicate --landlock" : "invalid --landlock (expected auto or require)");
+                    cerv_config_error(error_buf, error_cap, seen_landlock ? "duplicate --landlock" : "invalid --landlock" CERV_HINT_LANDLOCK);
                     return CERV_CONFIG_ERROR;
                 }
                 seen_landlock = true;
             } else {
-                cerv_config_error(error_buf, error_cap, "unknown or incomplete option");
+                cerv_config_error_arg(error_buf, error_cap, "unknown option, or option missing its value", arg);
                 return CERV_CONFIG_ERROR;
             }
             continue;
         }
-        if (out->root_path != NULL) { cerv_config_error(error_buf, error_cap, "multiple ROOT arguments"); return CERV_CONFIG_ERROR; }
-        if (arg[0] == '\0') { cerv_config_error(error_buf, error_cap, "empty ROOT"); return CERV_CONFIG_ERROR; }
+        if (out->root_path != NULL) { cerv_config_error(error_buf, error_cap, "multiple ROOT arguments; expected at most one directory"); return CERV_CONFIG_ERROR; }
+        if (arg[0] == '\0') { cerv_config_error(error_buf, error_cap, "ROOT must not be empty"); return CERV_CONFIG_ERROR; }
         out->root_path = arg;
     }
 
     if (!seen_listen && env != NULL && env->listen != NULL) {
         if (!cerv_parse_listen(env->listen, &out->listen_addr, &out->listen_addr_len)) {
-            cerv_config_error(error_buf, error_cap, "invalid CERV_LISTEN"); return CERV_CONFIG_ERROR;
+            cerv_config_error(error_buf, error_cap, "invalid CERV_LISTEN" CERV_HINT_LISTEN); return CERV_CONFIG_ERROR;
         }
         seen_listen = true;
     }
@@ -390,7 +404,7 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
         else {
             workers_auto = false;
             if (!cerv_parse_size_positive(env->workers, &out->workers) || out->workers > CERV_WORKERS_MAX) {
-                cerv_config_error(error_buf, error_cap, "invalid CERV_WORKERS"); return CERV_CONFIG_ERROR;
+                cerv_config_error(error_buf, error_cap, "invalid CERV_WORKERS" CERV_HINT_WORKERS); return CERV_CONFIG_ERROR;
             }
         }
     }
@@ -400,49 +414,49 @@ enum cerv_config_result cerv_config_parse_with_env(int argc, char *const argv[],
             out->max_connections_auto = false;
             if (!cerv_parse_size_positive(env->max_connections, &out->max_connections) ||
                 out->max_connections >= (size_t)UINT32_MAX) {
-                cerv_config_error(error_buf, error_cap, "invalid CERV_MAX_CONNECTIONS"); return CERV_CONFIG_ERROR;
+                cerv_config_error(error_buf, error_cap, "invalid CERV_MAX_CONNECTIONS" CERV_HINT_CONNECTIONS); return CERV_CONFIG_ERROR;
             }
         }
     }
     if (!seen_header && env != NULL && env->header_timeout != NULL &&
         !cerv_parse_duration(env->header_timeout, &out->header_timeout)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_HEADER_TIMEOUT"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_HEADER_TIMEOUT" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
     }
     if (!seen_write && env != NULL && env->write_timeout != NULL &&
         !cerv_parse_duration(env->write_timeout, &out->write_timeout)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_WRITE_TIMEOUT"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_WRITE_TIMEOUT" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
     }
     if (!seen_lifetime && env != NULL && env->max_lifetime != NULL &&
         !cerv_parse_duration(env->max_lifetime, &out->max_lifetime)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_MAX_LIFETIME"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_MAX_LIFETIME" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
     }
     if (!seen_shutdown && env != NULL && env->shutdown_timeout != NULL &&
         !cerv_parse_duration(env->shutdown_timeout, &out->shutdown_timeout)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_SHUTDOWN_TIMEOUT"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_SHUTDOWN_TIMEOUT" CERV_HINT_DURATION); return CERV_CONFIG_ERROR;
     }
     if (!seen_immutable && env != NULL && env->immutable != NULL && !cerv_parse_bool(env->immutable, &out->immutable)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_IMMUTABLE"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_IMMUTABLE" CERV_HINT_BOOL); return CERV_CONFIG_ERROR;
     }
     if (!seen_spa_fallback && env != NULL && env->spa_fallback != NULL && env->spa_fallback[0] != '\0' &&
         !cerv_parse_spa_fallback(env->spa_fallback, out->spa_fallback, &out->spa_fallback_len)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_SPA_FALLBACK"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_SPA_FALLBACK" CERV_HINT_SPA_FALLBACK); return CERV_CONFIG_ERROR;
     }
     if (!seen_landlock && env != NULL && env->landlock != NULL && !cerv_parse_landlock(env->landlock, &out->require_landlock)) {
-        cerv_config_error(error_buf, error_cap, "invalid CERV_LANDLOCK (expected auto or require)"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "invalid CERV_LANDLOCK" CERV_HINT_LANDLOCK); return CERV_CONFIG_ERROR;
     }
     if (out->root_path == NULL && env != NULL && env->root != NULL) {
-        if (env->root[0] == '\0') { cerv_config_error(error_buf, error_cap, "invalid CERV_ROOT"); return CERV_CONFIG_ERROR; }
+        if (env->root[0] == '\0') { cerv_config_error(error_buf, error_cap, "CERV_ROOT must not be empty"); return CERV_CONFIG_ERROR; }
         out->root_path = env->root;
     }
 
     if (!seen_listen) { cerv_config_error(error_buf, error_cap, "--listen or CERV_LISTEN is required"); return CERV_CONFIG_ERROR; }
     if (out->root_path == NULL) { cerv_config_error(error_buf, error_cap, "ROOT or CERV_ROOT is required"); return CERV_CONFIG_ERROR; }
     if (workers_auto && !cerv_config_detect_auto_workers(&out->workers)) {
-        cerv_config_error(error_buf, error_cap, "cannot resolve --workers auto"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "cannot resolve --workers auto from CPU affinity and cgroup limits; pass --workers N"); return CERV_CONFIG_ERROR;
     }
     if (out->workers == 0U || out->workers > CERV_WORKERS_MAX ||
         (!out->max_connections_auto && out->workers > out->max_connections)) {
-        cerv_config_error(error_buf, error_cap, "workers exceed max connections"); return CERV_CONFIG_ERROR;
+        cerv_config_error(error_buf, error_cap, "--workers exceeds --max-connections; every worker needs at least one connection slot"); return CERV_CONFIG_ERROR;
     }
     return CERV_CONFIG_OK;
 }
