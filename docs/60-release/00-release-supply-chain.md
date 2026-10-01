@@ -56,8 +56,7 @@ Cerv SHALL claim only the provenance properties actually achieved.
 When GitHub Actions is used:
 
 - workflows use least `GITHUB_TOKEN` permissions;
-- third-party actions are pinned to full commit SHAs;
-- dependency update automation proposes controlled SHA updates;
+- third-party actions are pinned to full commit SHAs and updated only by deliberate maintainer change;
 - publication jobs run only for repository-controlled release tags or explicit maintainer dispatch;
 - untrusted pull-request code never receives publication credentials;
 - release files receive GitHub artifact attestations;
@@ -80,7 +79,7 @@ The hosted publication profile produces all local release-bundle artifacts plus:
 
 Tags with a SemVer suffix are published as prereleases and SHALL NOT update stable GHCR aliases. An exact stable product-version tag MAY additionally publish `major.minor.patch`, `major.minor`, `major`, and `latest` aliases that all resolve to the same attested image digest.
 
-The workflow's third-party Actions SHALL be pinned to immutable full commit SHAs. Dependabot MAY propose controlled updates to those pins.
+The workflow's third-party Actions SHALL be pinned to immutable full commit SHAs. Pins change only through reviewed maintainer commits.
 
 ## Reproducible builds
 
