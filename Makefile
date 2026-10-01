@@ -1,8 +1,6 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all
 
-CC ?= cc
-AR ?= ar
 GCC ?= gcc
 RELEASE_CC ?= $(GCC)
 CLANG ?= clang
