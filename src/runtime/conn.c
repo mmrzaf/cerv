@@ -467,6 +467,8 @@ enum cerv_conn_result cerv_conn_on_deadline(struct cerv_conn *conn, struct cerv_
     if (conn == NULL || conn->state == CERV_CONN_FREE || write_timeout.ns == 0U) return CERV_CONN_FATAL;
     if (now.ns >= conn->lifetime_deadline.ns) return CERV_CONN_CLOSE;
     if (conn->state == CERV_CONN_RECV_HEADERS && now.ns >= conn->header_deadline.ns) {
+        /* A connection that never began a request, such as an idle persistent one, is closed silently. */
+        if (conn->request_used == 0U) return CERV_CONN_CLOSE;
         return cerv_conn_install_error(conn, CERV_STATUS_408, cerv_conn_request_line_is_head(conn),
                                        unix_seconds, now, write_timeout);
     }

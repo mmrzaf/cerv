@@ -133,6 +133,10 @@ static void test_timeout_response(void)
     CHECK(cerv_conn_begin(conn, sv[0], (struct cerv_mono_time){.ns = 100U}, header, lifetime));
     sv[0] = -1;
     CHECK(cerv_conn_next_deadline(conn, &deadline) && deadline.ns == 100U + header.ns);
+
+    /* A request that started but stalled before its blank line receives 408. */
+    memcpy(conn->request_bytes, "GET /sl", 7U);
+    conn->request_used = 7U;
     result = cerv_conn_on_deadline(conn, deadline, INT64_C(1700000000), write);
     CHECK(result == CERV_CONN_KEEP && conn->state == CERV_CONN_SEND_HEADERS);
     CHECK(conn->write_deadline.ns == deadline.ns + write.ns);
@@ -141,6 +145,37 @@ static void test_timeout_response(void)
     n = recv(sv[1], wire, sizeof(wire), 0);
     CHECK(n > 0);
     if (n > 0) CHECK(bytes_contain(wire, (size_t)n, "HTTP/1.1 408 Request Timeout\r\n"));
+    cerv_conn_cleanup(conn);
+    CHECK(cerv_conn_arena_release(&arena, conn));
+    CHECK(close(sv[1]) == 0);
+}
+
+static void test_idle_timeout_closes_silently(void)
+{
+    int sv[2] = {-1, -1};
+    struct cerv_conn slots[1];
+    struct cerv_conn_arena arena;
+    struct cerv_conn *conn = NULL;
+    struct cerv_duration header = duration_ms(10U);
+    struct cerv_duration write = duration_ms(50U);
+    struct cerv_duration lifetime = duration_ms(1000U);
+    struct cerv_mono_time deadline;
+    unsigned char wire[16];
+
+    CHECK(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0, sv) == 0);
+    CHECK(cerv_conn_arena_init(&arena, slots, 1U));
+    CHECK(cerv_conn_arena_acquire(&arena, &conn) == CERV_SLOT_ACQUIRE_OK);
+    CHECK(cerv_conn_begin(conn, sv[0], (struct cerv_mono_time){.ns = 100U}, header, lifetime));
+    sv[0] = -1;
+    CHECK(cerv_conn_next_deadline(conn, &deadline) && deadline.ns == 100U + header.ns);
+
+    /* No byte of a request arrived (a fresh or idle persistent connection): close without a response. */
+    CHECK(conn->request_used == 0U);
+    CHECK(cerv_conn_on_deadline(conn, deadline, INT64_C(1700000000), write) == CERV_CONN_CLOSE);
+    CHECK(conn->state == CERV_CONN_RECV_HEADERS);
+    CHECK(recv(sv[1], wire, sizeof(wire), MSG_DONTWAIT) < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+    /* Before the deadline nothing happens. */
+    CHECK(cerv_conn_on_deadline(conn, (struct cerv_mono_time){.ns = deadline.ns - 1U}, INT64_C(1700000000), write) == CERV_CONN_KEEP);
     cerv_conn_cleanup(conn);
     CHECK(cerv_conn_arena_release(&arena, conn));
     CHECK(close(sv[1]) == 0);
@@ -370,6 +405,7 @@ int main(void)
     test_timer_heap();
     test_arena_generation();
     test_timeout_response();
+    test_idle_timeout_closes_silently();
     test_lifetime_precedes_header_timeout();
     test_fallback_transfer();
     test_header_deadline_is_absolute();

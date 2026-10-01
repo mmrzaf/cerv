@@ -24,6 +24,8 @@ If a successful HTTP/1.1 response is eligible for bounded connection reuse, the 
 next_header_deadline = prior_response_complete_monotonic_time + configured_header_timeout
 ```
 
+When a header deadline expires, the response depends on whether a request had begun. If at least one byte of a request was received, the stalled request receives `408 Request Timeout` and the connection closes. If no byte arrived, as with a fresh connection that never spoke or a persistent connection that went idle between requests, Cerv closes it silently: a server may close an idle connection without a response (RFC 9112 section 9.5), and a `408` written to a connection the client believes is idle can be misread by that client as the answer to its next request.
+
 Neither deadline resets when more header bytes arrive. The connection's independent absolute lifetime remains anchored at the original accept. This prevents a peer from retaining a slot indefinitely by trickling bytes while still allowing a bounded persistent backend connection to wait for its next sequential request.
 
 ## Write no-progress deadline

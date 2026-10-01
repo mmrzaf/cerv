@@ -157,7 +157,8 @@ At minimum:
 Use deterministic socket clients to exercise:
 
 - one byte of headers per interval;
-- stop before CRLFCRLF;
+- stop before CRLFCRLF (408);
+- connect and send nothing, or idle between persistent requests (silent close, no response bytes);
 - headers complete just before deadline;
 - headers complete just after deadline;
 - client stops reading response headers;

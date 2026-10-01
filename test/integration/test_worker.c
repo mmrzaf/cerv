@@ -349,10 +349,29 @@ static void test_deadlines(const struct cerv_fs_root *root)
     CHECK(init_worker(&worker, listener, root, &slot, &timer, 1U, 20U, 100U, 1000U));
     client = connect_client(port, 0);
     CHECK(client >= 0);
+    CHECK(send_all(client, "GET /sl", 7U));
     CHECK(cerv_worker_run_once(&worker, 50) == CERV_WORKER_OK); /* accept */
+    CHECK(cerv_worker_run_once(&worker, 50) == CERV_WORKER_OK); /* read the partial request */
     CHECK(cerv_worker_run_once(&worker, 100) == CERV_WORKER_OK); /* timer -> 408 state */
     CHECK(drive_response(&worker, client, &capture, 50U));
     CHECK(capture_contains(&capture, "408 Request Timeout"));
+    CHECK(close(client) == 0);
+    cerv_worker_destroy(&worker);
+    CHECK(close(listener) == 0);
+
+    /* A connection that never sent a byte is dropped silently rather than answered. */
+    listener = create_listener(&port);
+    CHECK(listener >= 0);
+    if (listener < 0) return;
+    CHECK(init_worker(&worker, listener, root, &slot, &timer, 1U, 20U, 100U, 1000U));
+    client = connect_client(port, 0);
+    CHECK(client >= 0);
+    CHECK(cerv_worker_run_once(&worker, 50) == CERV_WORKER_OK); /* accept */
+    CHECK(cerv_worker_run_once(&worker, 100) == CERV_WORKER_OK); /* header deadline -> silent close */
+    capture = (struct response_capture){0};
+    capture_read(client, &capture);
+    CHECK(cerv_worker_active_connections(&worker) == 0U);
+    CHECK(capture.eof && capture.len == 0U);
     CHECK(close(client) == 0);
     cerv_worker_destroy(&worker);
     CHECK(close(listener) == 0);
